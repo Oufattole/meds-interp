@@ -1,6 +1,8 @@
-import polars as pl
-from sklearn.linear_model import LogisticRegression
 import numpy as np
+import polars as pl
+from sklearn import metrics
+from sklearn.linear_model import LogisticRegression
+
 
 def fit_logistic_regression(train_df: pl.DataFrame, test_df: pl.DataFrame, c) -> pl.Series:
     """Fits Logistic Regression model to training dataset and gets labels on test set.
@@ -13,21 +15,19 @@ def fit_logistic_regression(train_df: pl.DataFrame, test_df: pl.DataFrame, c) ->
     Returns:
         pl.Series: labels from logistic regression model for the test_df embeddings
     """
-    # embeddings = df.get_column("embeddings")
-    # labels = df.get_column("labels")
 
-    # classifier = LogisticRegression(C=c)
-    # classifier.fit(embeddings, labels)
-    # predicted_labels = classifier.predict(embeddings)
-    # return predicted_labels
-    embeddings = np.array(df['embeddings'].to_list())
-    labels = np.array(df['labels'])
-    
+    train_embeddings = np.array(train_df["embeddings"].to_list())
+    labels = np.array(train_df["label"])
+
+    test_embeddings = np.array(test_df["embeddings"].to_list())
+
     classifier = LogisticRegression(C=c)
-    classifier.fit(embeddings, labels)
-    predicted_labels = classifier.predict(embeddings)
+    classifier.fit(train_embeddings, labels)
+    predicted_labels = classifier.predict(test_embeddings)
+    predicted_probabilities = classifier.predict_proba(test_embeddings)[::, 1]
 
-    return pl.Series(predicted_labels)
+    return pl.Series(predicted_labels), pl.Series(predicted_probabilities)
+
 
 def score_labels(test_df: pl.DataFrame):
     """Evaluates predictions
@@ -36,7 +36,13 @@ def score_labels(test_df: pl.DataFrame):
     Returns:
         dictionary of different evaluation metrics.
     """
+    true_labels = test_df["label"]
+    predicted_labels = test_df.get_column("predictions")
+    predicted_probs = test_df.get_column("probabilities")
+
+    accuracy = metrics.accuracy_score(true_labels, predicted_labels)
+    auc_score = metrics.roc_auc_score(true_labels, predicted_probs)
     return dict(
-        auc=0,
-        accuracy=0,
+        auc=auc_score,
+        accuracy=accuracy,
     )
