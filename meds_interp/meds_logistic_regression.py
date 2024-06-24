@@ -23,10 +23,9 @@ def fit_logistic_regression(train_df: pl.DataFrame, test_df: pl.DataFrame, c) ->
 
     classifier = LogisticRegression(C=c)
     classifier.fit(train_embeddings, labels)
-    predicted_labels = classifier.predict(test_embeddings)
     predicted_probabilities = classifier.predict_proba(test_embeddings)[::, 1]
 
-    return pl.Series(predicted_labels), pl.Series(predicted_probabilities)
+    return pl.Series(predicted_probabilities)
 
 
 def score_labels(test_df: pl.DataFrame):
@@ -37,12 +36,19 @@ def score_labels(test_df: pl.DataFrame):
         dictionary of different evaluation metrics.
     """
     true_labels = test_df["label"]
-    predicted_labels = test_df.get_column("predictions")
+
+    def predictor(x):
+        if x >= 0.5:
+            return 1
+        else:
+            return 0
+
+    predicted_labels = pl.Series(map(predictor, test_df.get_column("probabilities")))
     predicted_probs = test_df.get_column("probabilities")
 
     accuracy = metrics.accuracy_score(true_labels, predicted_labels)
     auc_score = metrics.roc_auc_score(true_labels, predicted_probs)
     return dict(
-        auc=auc_score,
+        auc=float(auc_score),
         accuracy=accuracy,
     )
