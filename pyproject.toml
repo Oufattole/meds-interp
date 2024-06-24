@@ -1,0 +1,31 @@
+[project]
+name = "meds-interp"
+version = "0.0.1"
+authors = [
+  { name="Leander Goessling", email="leandermgoessling@gmail.com" },
+  { name="Nassim Oufattole", email="noufattole@gmail.com" },
+]
+description = "pip installable interpretations of embeddings for MEDS data."
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = ["polars", "pyarrow", "loguru", "hydra-core", "numpy", "scipy", "pandas", "tqdm", "xgboost", "scikit-learn"]
+
+[project.scripts]
+
+
+[project.optional-dependencies]
+dev = ["pre-commit"]
+tests = ["pytest", "pytest-cov", "rootutils"]
+
+[build-system]
+requires = ["setuptools>=61.0", "setuptools-scm>=8.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project.urls]
+Homepage = "https://github.com/Oufattole/meds-interp"
+Issues = "https://github.com/Oufattole/meds-interp/issues"
