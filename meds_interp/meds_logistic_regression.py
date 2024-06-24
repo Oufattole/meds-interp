@@ -16,14 +16,14 @@ def fit_logistic_regression(train_df: pl.DataFrame, test_df: pl.DataFrame, c) ->
         pl.Series: labels from logistic regression model for the test_df embeddings
     """
 
-    train_embeddings = np.array(train_df["embeddings"].to_list())
-    labels = np.array(train_df["label"])
+    train_embeddings = np.asarray(train_df["embeddings"].to_list())
+    labels = train_df["label"].to_numpy()
 
-    test_embeddings = np.array(test_df["embeddings"].to_list())
+    test_embeddings = np.asarray(test_df["embeddings"].to_list())
 
     classifier = LogisticRegression(C=c)
     classifier.fit(train_embeddings, labels)
-    predicted_probabilities = classifier.predict_proba(test_embeddings)[::, 1]
+    predicted_probabilities = classifier.predict_proba(test_embeddings)
 
     return pl.Series(predicted_probabilities)
 
@@ -37,14 +37,8 @@ def score_labels(test_df: pl.DataFrame):
     """
     true_labels = test_df["label"]
 
-    def predictor(x):
-        if x >= 0.5:
-            return 1
-        else:
-            return 0
-
-    predicted_labels = pl.Series(map(predictor, test_df.get_column("probabilities")))
-    predicted_probs = test_df.get_column("probabilities")
+    predicted_labels = test_df.get_column("probabilities").list.arg_max()
+    predicted_probs = test_df.get_column("probabilities").list.get(0)
 
     accuracy = metrics.accuracy_score(true_labels, predicted_labels)
     auc_score = metrics.roc_auc_score(true_labels, predicted_probs)
