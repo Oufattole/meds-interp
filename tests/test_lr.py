@@ -35,3 +35,4 @@ def test_dual_modality_knn():
     #
     embedd_array = np.asarray(train_df["embeddings_0"].to_list())
     modalities = ["embeddings_0", "embeddings_1"]
+

@@ -184,17 +184,18 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
         check_is_fitted(self, "post_index_")
 
         X = np.atleast_2d(X).astype(np.float32)
-        both_dist, both_idx = self.pre_and_post_index_.search(X, n_neighbors)
-        both_dist /= self.C  # we normalize both_dist since it is the sum of the pre and post distances
-        pre_dist, pre_idx = self.pre_index_.search(pre, n_neighbors)
-        post_dist, post_idx = self.post_index_.search(post, n_neighbors)
-        # all 3
-        if self.combo == DualCombo.CONCAT:
-            dist = np.concatenate([both_dist, pre_dist, post_dist], axis=1)
-            idx = np.concatenate([both_idx, pre_idx, post_idx], axis=1)
-        else:
-            dist = [both_dist, pre_dist, post_dist]
-            idx = [both_idx, pre_idx, post_idx]
+        dist, idx = self.search(X, n_neighbors)
+        # both_dist, both_idx = self.pre_and_post_index_.search(X, n_neighbors)
+        # both_dist /= self.C  # we normalize both_dist since it is the sum of the pre and post distances
+        # pre_dist, pre_idx = self.pre_index_.search(pre, n_neighbors)
+        # post_dist, post_idx = self.post_index_.search(post, n_neighbors)
+        # # all 3
+        # if self.combo == DualCombo.CONCAT:
+        #     dist = np.concatenate([both_dist, pre_dist, post_dist], axis=1)
+        #     idx = np.concatenate([both_idx, pre_idx, post_idx], axis=1)
+        # else:
+        #     dist = [both_dist, pre_dist, post_dist]
+        #     idx = [both_idx, pre_idx, post_idx]
 
         if return_distance:
             return dist, idx
@@ -286,14 +287,15 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
             X = self.scaler.transform(X)
             return X
         elif self.preprocess == Preprocess_Type.NORM_PRE_AND_POST:
+            self.scalers = []
             assert X.shape[1] == self.d * 2
-            # TODO Make this a for loop -- append to self.scalers
-            scaler = self.scalers[0]
-            pre = X[:, : self.d]
-            pre = scaler.transform(pre)
-            embeddings = [pre]
-            X = self.concat_data(embeddings)
-            return X
+            for modality in self.modalities:
+                embed_array = np.asarray(x[modality].to_list())
+                # scaler = self.scalers[0]
+                scaler = Normalizer()
+                scaler.transform(embed_array)
+                self.scalers.append(scaler)
+            return self.scalers
         else:
             assert self.preprocess == Preprocess_Type.NONE
             return X
@@ -367,14 +369,14 @@ def train_dual_model(train_features: list[np.Array], train_labels, val_features,
     """
     LogLoss = make_scorer(log_loss, greater_is_better=False, needs_proba=True)
 
-    pipe = Pipeline([("classifier", DualFaissKNNClassifier(algorithm="l2", d=d))])
+    pipe = Pipeline([("classifier", DualFaissKNNClassifier(algorithm="l2", d=self.d))])
     input_data = np.concatenate([train_features, val_features])
     input_labels = np.concatenate([train_labels, val_labels])
 
     pds = PredefinedSplit(test_fold=[-1] * len(train_labels) + [0] * len(val_labels))
     param_grid = [
         {
-            "classifier__preprocess": list(Dual_Preprocess_Type),
+            "classifier__preprocess": list(Preprocess_Type),
             "classifier__algorithm": ["l2", "ip"],
             "classifier__weights": ["uniform", "distance"],
             "classifier__n_neighbors": [30, 100, 300, 1000],
