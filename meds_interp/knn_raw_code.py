@@ -22,9 +22,9 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import Normalizer
 from sklearn.utils.multiclass import unique_labels
 from sklearn.utils.validation import check_is_fitted
-from src.train.ebcl.ebcl_train_pl import EbclPretrainTuneConfig
+# from src.train.ebcl.ebcl_train_pl import EbclPretrainTuneConfig
 
-cfg = EbclPretrainTuneConfig()
+# cfg = EbclPretrainTuneConfig()
 # dataloader_creator = EBCLDataLoaderCreator(cfg.dataloader_config)
 # train_dataloader, val_dataloader, test_dataloader = dataloader_creator.get_dataloaders()
 
@@ -167,7 +167,9 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
             Indices of the instances belonging to the region of competence of
             the given query sample.
         """
-        X, pre, post = self.transform_preprocess(X)
+        # X, pre, post = self.transform_preprocess(X)
+        X = self.transform_preprocess(X)
+
         if n_neighbors is None:
             n_neighbors = self.n_neighbors
 
@@ -219,7 +221,7 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
             weights = np.ones_like(neigh_ind)
 
         all_rows = np.arange(n_queries)
-        probabilities = []
+        # probabilities = []
 
         classes = self.classes_
         pred_labels = _y[neigh_ind]
@@ -255,7 +257,7 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
             neigh_dist, neigh_ind = self.kneighbors(X, self.n_neighbors, return_distance=True)
             return self.get_distance_proba(neigh_dist, neigh_ind)
 
-    def concat_data(self, X: list[np.array] | pl.Dataframe):
+    def concat_data(self, X: list[np.array] | pl.DataFrame):
         embeddings = []
         if isinstance(X, pl.DataFrame):
             for modality in self.modalities:
@@ -272,7 +274,6 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
         elif self.preprocess == Preprocess_Type.NORM_SEPERATLY:
             self.scalers = []
             assert X.shape[1] == self.d * 2
-            embeddings = []
             for modality in self.modalities:
                 embed_array = np.asarray(X[modality].to_list())
                 scaler = Normalizer()
@@ -282,15 +283,15 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
             assert self.preprocess == Preprocess_Type.NONE
 
     def transform_preprocess(self, X):
-        if self.preprocess == Preprocess_Type.NORM_ALL:
+        if self.preprocess == Preprocess_Type.NORM_AFTER_CONCAT:
             self.scaler = Normalizer()
             X = self.scaler.transform(X)
             return X
-        elif self.preprocess == Preprocess_Type.NORM_PRE_AND_POST:
+        elif self.preprocess == Preprocess_Type.NORM_SEPERATLY:
             self.scalers = []
             assert X.shape[1] == self.d * 2
             for modality in self.modalities:
-                embed_array = np.asarray(x[modality].to_list())
+                embed_array = np.asarray(X[modality].to_list())
                 # scaler = self.scalers[0]
                 scaler = Normalizer()
                 scaler.transform(embed_array)
@@ -353,7 +354,7 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
         return self.predict_proba(X)[:, 1]
 
 
-def train_dual_model(train_features: list[np.Array], train_labels, val_features, val_labels, dimension):
+def train_dual_model(train_features: list[np.array], train_labels, val_features, val_labels, dimension):
     """_summary_
 
     Args:
@@ -369,7 +370,7 @@ def train_dual_model(train_features: list[np.Array], train_labels, val_features,
     """
     LogLoss = make_scorer(log_loss, greater_is_better=False, needs_proba=True)
 
-    pipe = Pipeline([("classifier", DualFaissKNNClassifier(algorithm="l2", d=self.d))])
+    pipe = Pipeline([("classifier", DualFaissKNNClassifier(algorithm="l2", d=dimension))])
     input_data = np.concatenate([train_features, val_features])
     input_labels = np.concatenate([train_labels, val_labels])
 

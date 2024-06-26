@@ -3,8 +3,8 @@ import pandas as pd
 import polars as pl
 from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 
-def kmeans(df: pd.DataFrame, n_clusters: int):
 
+def kmeans(df: pd.DataFrame, n_clusters: int):
     kmeans = faiss.Kmeans(d=df.shape[1], k=n_clusters, niter=20, verbose=True)
     kmeans.train(df)
 
@@ -27,7 +27,7 @@ def k_means_score_labels(df):
     pandas_df_pl = df.to_pandas()
     contingency_table_pd = pd.crosstab(pandas_df_pl["cluster"], pandas_df_pl["label"])
     contingency_table = pl.from_pandas(contingency_table_pd)
-    
+
     total_purity = sum(contingency_table.max(axis=1)) / df_filtered.shape[0]
 
     ari_score = adjusted_rand_score(df_filtered["label"], df_filtered["cluster"])
