@@ -108,6 +108,7 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
     def __init__(
         self,
         modalities: list[str],
+        modality_weights: list[float],
         n_neighbors=5,
         n_jobs=None,
         algorithm="l2",
@@ -117,6 +118,7 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
         d=32,
     ):
         self.modalities = modalities
+        self.modality_weights = modality_weights
         self.n_neighbors = n_neighbors
         self.n_jobs = n_jobs
         self.algorithm = algorithm
@@ -182,9 +184,9 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
                     "n_neighbors does not take {} value, " "enter integer value".format(type(n_neighbors))
                 )
 
-        check_is_fitted(self, "pre_and_post_index_")
-        check_is_fitted(self, "pre_index_")
-        check_is_fitted(self, "post_index_")
+        # check_is_fitted(self, "pre_and_post_index_")
+        # check_is_fitted(self, "pre_index_")
+        # check_is_fitted(self, "post_index_")
 
         X = np.atleast_2d(X).astype(np.float32)
         dist, idx = self.search(X, n_neighbors)
@@ -326,7 +328,7 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
         self.n_classes_ = np.unique(y).size
         return self
 
-    def _prepare_knn_algorithm(self, X, d):
+    def _prepare_knn_algorithm(self, X, d, gpu_usage = False):
         """_summary_
 
         Args:
@@ -340,12 +342,14 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
             if self.algorithm == "l2":
                 index = faiss.IndexFlatL2(d * len(self.modalities))
                 self.index = index
+                if gpu_usage:
                 # TODO add some argument for allowing gpu usage
-                # self = faiss.index_cpu_to_gpu(faiss.StandardGpuResources(), 0, index)
+                    self.index = faiss.index_cpu_to_gpu(faiss.StandardGpuResources(), 0, index)
             elif self.algorithm == "ip":
                 index = faiss.IndexFlatIP(d)
-                # index = faiss.index_cpu_to_gpu(faiss.StandardGpuResources(), 0, index)
                 self.index = index
+                if gpu_usage:
+                    index = faiss.index_cpu_to_gpu(faiss.StandardGpuResources(), 0, index)
             else:
                 raise ValueError(
                     "Invalid algorithm option." " Expected ['l2', 'ip'], " "got {}".format(self.algorithm)
@@ -355,7 +359,8 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
         return self.predict_proba(X)[:, 1]
 
 
-def train_dual_model(train_features: list[np.array], train_labels, val_features, val_labels, dimension):
+def train_dual_model(train_features: list[np.array], train_labels, val_features, val_labels, dimension, 
+                     modality_weights: list[float]):
     """_summary_
 
     Args:
@@ -365,6 +370,7 @@ def train_dual_model(train_features: list[np.array], train_labels, val_features,
         val_features (_type_): _description_
         val_labels (_type_): _description_
         dimension (_type_): _description_
+        modality_weights: weights of each modality, should sum to 1
 
     Returns:
         _type_: _description_
@@ -382,8 +388,9 @@ def train_dual_model(train_features: list[np.array], train_labels, val_features,
             "classifier__algorithm": ["l2", "ip"],
             "classifier__weights": ["uniform", "distance"],
             "classifier__n_neighbors": [30, 100, 300, 1000],
-            "classifier__combo": list(DualCombo),
+            # "classifier__combo": list(DualCombo),
             "classifier__d": [dimension],
+            "classifier_modality_weights": modality_weights,
             # TODO: add 'modality_weights' optimization
             # TODO: scipy.optimize: https://docs.scipy.org/doc/scipy/reference/optimize.html
         },
