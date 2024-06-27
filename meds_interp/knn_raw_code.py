@@ -21,7 +21,6 @@ from sklearn.neighbors._base import _get_weights
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import Normalizer
 from sklearn.utils.multiclass import unique_labels
-from sklearn.utils.validation import check_is_fitted
 
 # from src.train.ebcl.ebcl_train_pl import EbclPretrainTuneConfig
 
@@ -49,7 +48,6 @@ from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.neighbors._base import _get_weights
 from sklearn.preprocessing import Normalizer
 from sklearn.utils.multiclass import unique_labels
-from sklearn.utils.validation import check_is_fitted
 
 
 class Preprocess_Type(Enum):
@@ -277,11 +275,17 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
         elif self.preprocess == Preprocess_Type.NORM_SEPERATLY:
             self.scalers = []
             assert X.shape[1] == self.d * 2
-            for modality in self.modalities:
-                embed_array = np.asarray(X[modality].to_list())
+            assert self.modalities.length() == self.modality_weights.length()
+            for i in range(self.modalities.length()):
+                embed_array = np.asarray(X[self.modalities[i]].to_list())
                 scaler = Normalizer()
                 scaler.fit(embed_array)
-                self.scalers.append(scaler)
+                self.scalers.append(scaler * self.modality_weights[i])
+            # for modality in self.modalities:
+            #     embed_array = np.asarray(X[modality].to_list())
+            #     scaler = Normalizer()
+            #     scaler.fit(embed_array)
+            #     self.scalers.append(scaler)
         else:
             assert self.preprocess == Preprocess_Type.NONE
 
@@ -293,12 +297,18 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
         elif self.preprocess == Preprocess_Type.NORM_SEPERATLY:
             self.scalers = []
             assert X.shape[1] == self.d * 2
-            for modality in self.modalities:
-                embed_array = np.asarray(X[modality].to_list())
-                # scaler = self.scalers[0]
+            assert self.modalities.length() == self.modality_weights.length()
+            for i in range(self.modalities.length()):
+                embed_array = np.asarray(X[self.modalities[i]].to_list())
                 scaler = Normalizer()
                 scaler.transform(embed_array)
-                self.scalers.append(scaler)
+                self.scalers.append(scaler * self.modality_weights[i])
+            # for modality in self.modalities:
+            #     embed_array = np.asarray(X[modality].to_list())
+            #     # scaler = self.scalers[0]
+            #     scaler = Normalizer()
+            #     scaler.transform(embed_array)
+            #     self.scalers.append(scaler)
             return self.scalers
         else:
             assert self.preprocess == Preprocess_Type.NONE
@@ -328,7 +338,7 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
         self.n_classes_ = np.unique(y).size
         return self
 
-    def _prepare_knn_algorithm(self, X, d, gpu_usage = False):
+    def _prepare_knn_algorithm(self, X, d, gpu_usage=False):
         """_summary_
 
         Args:
@@ -343,7 +353,7 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
                 index = faiss.IndexFlatL2(d * len(self.modalities))
                 self.index = index
                 if gpu_usage:
-                # TODO add some argument for allowing gpu usage
+                    # TODO add some argument for allowing gpu usage
                     self.index = faiss.index_cpu_to_gpu(faiss.StandardGpuResources(), 0, index)
             elif self.algorithm == "ip":
                 index = faiss.IndexFlatIP(d)
@@ -359,8 +369,14 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
         return self.predict_proba(X)[:, 1]
 
 
-def train_dual_model(train_features: list[np.array], train_labels, val_features, val_labels, dimension, 
-                     modality_weights: list[float]):
+def train_dual_model(
+    train_features: list[np.array],
+    train_labels,
+    val_features,
+    val_labels,
+    dimension,
+    modality_weights: list[float],
+):
     """_summary_
 
     Args:
