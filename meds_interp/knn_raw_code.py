@@ -188,6 +188,7 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
 
         X = np.atleast_2d(X).astype(np.float32)
         dist, idx = self.search(X, n_neighbors)
+        # all_dist, all_idx = self.
         # both_dist, both_idx = self.pre_and_post_index_.search(X, n_neighbors)
         # both_dist /= self.C  # we normalize both_dist since it is the sum of the pre and post distances
         # pre_dist, pre_idx = self.pre_index_.search(pre, n_neighbors)

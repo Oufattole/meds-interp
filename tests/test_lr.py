@@ -41,7 +41,7 @@ def test_dual_modality_knn():
     embeddings_1 = np.array(train_df["embeddings_1"].to_list(), dtype=np.float32)
 
     # Concatenate the embeddings along the feature axis
-    X = np.hstack((embeddings_0, embeddings_1))
+    X = np.array((embeddings_0, embeddings_1))
     y = np.array(train_df["label"].to_list(), dtype=np.float32)
     print(X)
 
