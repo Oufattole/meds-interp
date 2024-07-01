@@ -187,7 +187,7 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
         # check_is_fitted(self, "post_index_")
 
         X = np.atleast_2d(X).astype(np.float32)
-        dist, idx = self.search(X, n_neighbors)
+        dist, idx = self.index.search(X, n_neighbors)
         # all_dist, all_idx = self.
         # both_dist, both_idx = self.pre_and_post_index_.search(X, n_neighbors)
         # both_dist /= self.C  # we normalize both_dist since it is the sum of the pre and post distances
@@ -269,7 +269,7 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
             embeddings = X
         return np.concatenate(embeddings, axis=1)
 
-    def fit_preprocess(self, X: pl.DataFrame):
+    def fit_preprocess(self, X):
         if self.preprocess == Preprocess_Type.NORM_AFTER_CONCAT:
             self.scaler = Normalizer()
             self.scaler.fit(X)
@@ -277,43 +277,38 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
             self.scalers = []
             assert X.shape[1] == self.d * 2
             assert self.modalities.length() == self.modality_weights.length()
-            for i in range(self.modalities.length()):
-                embed_array = np.asarray(X[self.modalities[i]].to_list())
+            for modality in self.modalities:
+                embed_array = np.asarray(X[modality].to_list())
                 scaler = Normalizer()
                 scaler.fit(embed_array)
-                self.scalers.append(scaler * self.modality_weights[i])
-            # for modality in self.modalities:
-            #     embed_array = np.asarray(X[modality].to_list())
-            #     scaler = Normalizer()
-            #     scaler.fit(embed_array)
-            #     self.scalers.append(scaler)
+                self.scalers.append(scaler)
         else:
             assert self.preprocess == Preprocess_Type.NONE
 
-    def transform_preprocess(self, X):
+    def transform_preprocess(self, X: np.array):
+        
         if self.preprocess == Preprocess_Type.NORM_AFTER_CONCAT:
             self.scaler = Normalizer()
             X = self.scaler.transform(X)
-            return X
+            # return X
         elif self.preprocess == Preprocess_Type.NORM_SEPERATLY:
             self.scalers = []
             assert X.shape[1] == self.d * 2
-            assert self.modalities.length() == self.modality_weights.length()
-            for i in range(self.modalities.length()):
-                embed_array = np.asarray(X[self.modalities[i]].to_list())
+            for modality in self.modalities:
+                embed_array = np.asarray(X[modality].to_list())
+                # scaler = self.scalers[0]
                 scaler = Normalizer()
                 scaler.transform(embed_array)
-                self.scalers.append(scaler * self.modality_weights[i])
-            # for modality in self.modalities:
-            #     embed_array = np.asarray(X[modality].to_list())
-            #     # scaler = self.scalers[0]
-            #     scaler = Normalizer()
-            #     scaler.transform(embed_array)
-            #     self.scalers.append(scaler)
-            return self.scalers
+                self.scalers.append(scaler)
+            # return self.scalers
+            X = self.scalers
         else:
             assert self.preprocess == Preprocess_Type.NONE
-            return X
+        modality_lengths = []
+        for modality in self.modalities:
+            modality_lengths.append(X.get_column(modality[0].length()))
+        reweight_vector = np.repeat(self.modality_weights, modality_lengths)[None, :]
+        return X * reweight_vector
 
     def fit(self, X, y):
         """Fit the model according to the given training data.
@@ -354,7 +349,6 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
                 index = faiss.IndexFlatL2(d * len(self.modalities))
                 self.index = index
                 if gpu_usage:
-                    # TODO add some argument for allowing gpu usage
                     self.index = faiss.index_cpu_to_gpu(faiss.StandardGpuResources(), 0, index)
             elif self.algorithm == "ip":
                 index = faiss.IndexFlatIP(d)

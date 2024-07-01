@@ -28,29 +28,20 @@ def test_dual_modality_knn():
         {
             "embeddings_0": [[1, 1, 0], [1, 2, 1], [2, 0, -2]],
             "embeddings_1": [[1, 0, 0], [0, 2, 1], [-2, 0, -5]],
-            "label": [0, 1, 0],
+            "label": [0, 1, 0]
         }
     )
-    # extract arrays
-    # knn test_embedding -> find neighbors in the training set -> average the labels of those neighbors
-    #
-    embedd_array = np.asarray(train_df["embeddings_0"].to_list())
-    modalities = ["embeddings_0", "embeddings_1"]
+    train_df_2 = pl.DataFrame(
+    {
+        "embeddings": ["embedding_1", "embedding_2"],
+        "modality_1": [[[1, 1, 0], [1, 2, 1], [2, 0, -2]], [[0, 1, 2], [4, 0, 3], [1, 1, -1]]],
+        "modality_2": [[[1, 0, 0], [0, 2, 1], [-2, 0, -5]], [[4, 1, 1], [3, 1, 2], [2, 1, 4]]]
+    }
+)
 
-    embeddings_0 = np.array(train_df["embeddings_0"].to_list(), dtype=np.float32)
-    embeddings_1 = np.array(train_df["embeddings_1"].to_list(), dtype=np.float32)
+    modalities = ["modality_1", "modality_2"]
+    modality_weights = [4, 1]
+    print(train_df_2)
+    assert False
 
-    # Concatenate the embeddings along the feature axis
-    X = np.array((embeddings_0, embeddings_1))
-    y = np.array(train_df["label"].to_list(), dtype=np.float32)
-    print(X)
-
-    modalities = ["embeddings_0", "embeddings_1"]
-    d = embeddings_0.shape[1]  # Dimensionality of each embedding, which is 3
-
-    # Verify d and X.shape[1]
-
-    test1 = knn.DualFaissKNNClassifier(modalities, d=d)
-
-    # Fit the classifier on the NumPy arrays
-    test1.fit(X, y)
+    
