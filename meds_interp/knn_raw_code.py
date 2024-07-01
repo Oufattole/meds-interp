@@ -40,16 +40,6 @@ def get_results(ground_truth, pred, pred_proba):
     return result
 
 
-from enum import Enum
-
-import faiss
-import numpy as np
-from sklearn.base import BaseEstimator, ClassifierMixin
-from sklearn.neighbors._base import _get_weights
-from sklearn.preprocessing import Normalizer
-from sklearn.utils.multiclass import unique_labels
-
-
 class Preprocess_Type(Enum):
     NONE = "NONE"
     NORM_SEPERATLY = "NORM_SEPERATLY"
@@ -142,7 +132,7 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
         proba = self.predict_proba(X)
         return np.argmax(proba, axis=1)
 
-    def kneighbors(self, X, n_neighbors=None, return_distance=True):
+    def kneighbors(self, X: np.array, n_neighbors=None, return_distance=True):
         """Finds the K-neighbors of a point.
 
         Parameters
@@ -169,7 +159,6 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
             the given query sample.
         """
         # X, pre, post = self.transform_preprocess(X)
-        X = self.transform_preprocess(X)
 
         if n_neighbors is None:
             n_neighbors = self.n_neighbors
@@ -251,6 +240,7 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
         preds_proba : array of shape (n_samples, n_classes)
                           Probabilities estimates for each sample in X.
         """
+        X = self.transform_preprocess(X)
         if self.weights == "uniform":  # uses closest neighbors and treats all labels equally
             idx = self.kneighbors(X, self.n_neighbors, return_distance=False)
             return self.get_uniform_proba(idx)
@@ -270,13 +260,14 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
         return np.concatenate(embeddings, axis=1)
 
     def fit_preprocess(self, X):
+        self.get_modality_lengths(X)
         if self.preprocess == Preprocess_Type.NORM_AFTER_CONCAT:
+            X = self.concat_data(X)
             self.scaler = Normalizer()
             self.scaler.fit(X)
         elif self.preprocess == Preprocess_Type.NORM_SEPERATLY:
             self.scalers = []
-            assert X.shape[1] == self.d * 2
-            assert self.modalities.length() == self.modality_weights.length()
+            assert len(self.modalities) == len(self.modality_weights)
             for modality in self.modalities:
                 embed_array = np.asarray(X[modality].to_list())
                 scaler = Normalizer()
@@ -285,29 +276,31 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
         else:
             assert self.preprocess == Preprocess_Type.NONE
 
-    def transform_preprocess(self, X: np.array):
-        
+    def get_modality_lengths(self, X: pl.DataFrame):
+        modality_lengths = []
+        for modality in self.modalities:
+            modality_lengths.append(X.get_column(modality)[0].len())
+        self.modality_lengths = modality_lengths
+
+    def transform_preprocess(self, X: pl.DataFrame):
+        reweight_vector = np.repeat(self.modality_weights, self.modality_lengths)[None, :]
         if self.preprocess == Preprocess_Type.NORM_AFTER_CONCAT:
+            X = self.concat_data(X)
             self.scaler = Normalizer()
             X = self.scaler.transform(X)
             # return X
         elif self.preprocess == Preprocess_Type.NORM_SEPERATLY:
             self.scalers = []
-            assert X.shape[1] == self.d * 2
+            transformed_x = []
             for modality in self.modalities:
                 embed_array = np.asarray(X[modality].to_list())
-                # scaler = self.scalers[0]
                 scaler = Normalizer()
-                scaler.transform(embed_array)
-                self.scalers.append(scaler)
-            # return self.scalers
-            X = self.scalers
+                transformed_x.append(scaler.transform(embed_array))
+            X = self.concat_data(transformed_x)
         else:
             assert self.preprocess == Preprocess_Type.NONE
-        modality_lengths = []
-        for modality in self.modalities:
-            modality_lengths.append(X.get_column(modality[0].length()))
-        reweight_vector = np.repeat(self.modality_weights, modality_lengths)[None, :]
+            X = self.concat_data(X)
+
         return X * reweight_vector
 
     def fit(self, X, y):
@@ -321,16 +314,13 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
         y : array of shape (n_samples)
             class labels of each example in X.
         """
-        assert X.shape[1] == self.d * 2, f"X.shape[1] = {X.shape[1]}, self.d*2 = {self.d*2}"
         self.classes_ = unique_labels(y)
-        X = np.atleast_2d(X).astype(np.float32)
-        X = np.ascontiguousarray(X)
         self.fit_preprocess(X)
         X = self.transform_preprocess(X)
         d = X.shape[1]  # dimensionality of the feature vector
-        self._prepare_knn_algorithm(X, d)
+        self._prepare_knn_algorithm(X, d, False)
         self.index.add(X)
-        self.y_ = y
+        self.y_ = np.array(y)
         self.n_classes_ = np.unique(y).size
         return self
 
@@ -340,25 +330,25 @@ class DualFaissKNNClassifier(BaseEstimator, ClassifierMixin):
         Args:
             X (_type_): _description_
             d (_type_): dimension of the embeddings
+            gpu_usage (boolean): boolean for whether or not gpu should be used
 
         Raises:
             ValueError: _description_
         """
-        for modality in self.modalities:
-            if self.algorithm == "l2":
-                index = faiss.IndexFlatL2(d * len(self.modalities))
-                self.index = index
-                if gpu_usage:
-                    self.index = faiss.index_cpu_to_gpu(faiss.StandardGpuResources(), 0, index)
-            elif self.algorithm == "ip":
-                index = faiss.IndexFlatIP(d)
-                self.index = index
-                if gpu_usage:
-                    index = faiss.index_cpu_to_gpu(faiss.StandardGpuResources(), 0, index)
-            else:
-                raise ValueError(
-                    "Invalid algorithm option." " Expected ['l2', 'ip'], " "got {}".format(self.algorithm)
-                )
+        if self.algorithm == "l2":
+            index = faiss.IndexFlatL2(sum(self.modality_lengths))
+            self.index = index
+            if gpu_usage:
+                self.index = faiss.index_cpu_to_gpu(faiss.StandardGpuResources(), 0, index)
+        elif self.algorithm == "ip":
+            index = faiss.IndexFlatIP(d)
+            self.index = index
+            if gpu_usage:
+                index = faiss.index_cpu_to_gpu(faiss.StandardGpuResources(), 0, index)
+        else:
+            raise ValueError(
+                "Invalid algorithm option." " Expected ['l2', 'ip'], " "got {}".format(self.algorithm)
+            )
 
     def decision_function(self, X):
         return self.predict_proba(X)[:, 1]
@@ -375,7 +365,8 @@ def train_dual_model(
     """_summary_
 
     Args:
-        train_features (list[np.Array]): list of 2d array of embeddings (each row is a single embedding) for each modality
+        train_features (list[np.Array]): list of 2d array of embeddings
+        (each row is a single embedding) for each modality
             so train_features[0] contains embeddings of modality_0 for all patient events
         train_labels (_type_): corresponding prediction label for this, binary (1/0) for now.
         val_features (_type_): _description_
@@ -401,7 +392,6 @@ def train_dual_model(
             "classifier__n_neighbors": [30, 100, 300, 1000],
             # "classifier__combo": list(DualCombo),
             "classifier__d": [dimension],
-            "classifier_modality_weights": modality_weights,
             # TODO: add 'modality_weights' optimization
             # TODO: scipy.optimize: https://docs.scipy.org/doc/scipy/reference/optimize.html
         },
