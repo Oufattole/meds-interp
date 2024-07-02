@@ -2,22 +2,27 @@ defaults:
   - override hydra/sweeper: optuna
   - override hydra/sweeper/sampler: tpe
 
+input_path: ???
+output_path: ${input_path}/best_params.yaml
+
+preprocess: NONE
+distance_metric: l2
+neighbor_weighting: uniform
+n_neighbors: 3
+modalities: ??? # TODO: add this to sweeper params
+modality_weights: ??? # TODO: add this to sweeper params
+
 hydra:
   sweeper:
     sampler:
       seed: 123
     direction: minimize
-    study_name: sphere
+    study_name: knn
     storage: null
-    n_trials: 20
+    n_trials: 1
     n_jobs: 1
     params:
-      x: range(-5.5, 5.5, step=0.5)
-      y: choice(-5 ,0 ,5)
-
-x: 1
-y: 1
-z: 1
-
-# if true, simulate a failure by raising an exception
-error: false
+      preprocess: choice("NONE", "NORM_SEPERATLY", "NORM_AFTER_CONCAT")
+      distance_metric: choice("l2", "ip")
+      neighbor_weighting: choice("uniform", "distance")
+      n_neighbors: tag(log, interval(2, 1000))

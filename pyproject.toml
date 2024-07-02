@@ -16,6 +16,7 @@ classifiers = [
 dependencies = ["polars", "pyarrow", "loguru", "hydra-core", "numpy", "scipy", "pandas", "tqdm", "xgboost", "scikit-learn"]
 
 [project.scripts]
+meds-knn = "meds_interp.knn_raw_code:main"
 
 
 [project.optional-dependencies]

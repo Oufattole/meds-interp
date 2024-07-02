@@ -1,7 +1,11 @@
 import os
+from importlib.resources import files
+from pathlib import Path
 
 import faiss
+import hydra
 import rootutils
+from omegaconf import DictConfig
 
 root = rootutils.setup_root(os.path.abspath(""), dotenv=True, pythonpath=True, cwd=True)
 import os
@@ -33,33 +37,22 @@ class Preprocess_Type(Enum):
     NORM_AFTER_CONCAT = "NORM_AFTER_CONCAT"
 
 
-class DualCombo(Enum):
-    AVG = "AVG"
-    CONCAT = "CONCAT"
-
-
 class KNN_Model(BaseEstimator, ClassifierMixin):
     def __init__(
         self,
         modalities: list[str],
         modality_weights: list[float],
         n_neighbors=5,
-        n_jobs=None,
         algorithm="l2",
         weights="uniform",
         preprocess: Preprocess_Type = Preprocess_Type.NONE,
-        C=2.0,
-        d=32,
     ):
         self.modalities = modalities
         self.modality_weights = modality_weights
         self.n_neighbors = n_neighbors
-        self.n_jobs = n_jobs
         self.algorithm = algorithm
         self.weights = weights
         self.preprocess = preprocess
-        self.C = C
-        self.d = d
 
     def predict(self, X):
         proba = self.predict_proba(X)
@@ -242,3 +235,31 @@ class KNN_Model(BaseEstimator, ClassifierMixin):
 
     def decision_function(self, X):
         return self.predict_proba(X)[:, 1]
+
+
+config_yaml = files("meds_interp").joinpath("configs/knn.yaml")
+if not config_yaml.is_file():
+    raise FileNotFoundError("Core configuration not successfully installed!")
+
+
+@hydra.main(version_base=None, config_path=str(config_yaml.parent.resolve()), config_name=config_yaml.stem)
+def main(cfg: DictConfig):
+    knn = KNN_Model(
+        modalities=cfg.modalities,
+        modality_weights=cfg.modality_weights,
+        n_neighbors=cfg.n_neighbors,
+        algorithm=cfg.distance_metric,
+        weights=cfg.neighbor_weighting,
+        preprocess=cfg.preprocess,
+    )
+    # TODO: fix fit:
+    train_df = pl.read_parquet(Path(cfg.input_path) / "train.parquet")
+    assert knn
+    assert train_df
+    # knn.fit(train_df)
+    # val_df = train_df
+    # pred_labels = knn.predict_proba(val_df)
+
+
+if __name__ == "__main__":
+    main()
