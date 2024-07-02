@@ -13,10 +13,11 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-dependencies = ["polars", "pyarrow", "loguru", "hydra-core", "numpy", "scipy", "pandas", "tqdm", "xgboost", "scikit-learn"]
+dependencies = ["polars", "pyarrow", "loguru", "hydra-core", "numpy", "scipy", "pandas", "tqdm", "xgboost", "scikit-learn", "hydra-optuna-sweeper"]
 
 [project.scripts]
 meds-knn = "meds_interp.knn_raw_code:main"
+generate-weights = "meds_interp.generate_weights:main"
 
 
 [project.optional-dependencies]

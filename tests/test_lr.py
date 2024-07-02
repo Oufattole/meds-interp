@@ -1,7 +1,5 @@
-import tempfile
 from pathlib import Path
 
-import numpy as np
 import polars as pl
 from hydra import compose, initialize
 
@@ -18,63 +16,68 @@ def test_lr():
 
 
 def test_knn_model():
-    # train_df = pl.DataFrame(
-    #     {
-    #         "modality_0": [[1, 1, 0], [1, 2, 1], [2, 0, -2]],
-    #         "modality_1": [[1, 0, 0], [0, 2, 1], [-2, 0, -5]],
-    #         "label": [0, 1, 0],
-    #     }
-    # )
-
     train_df_2 = pl.DataFrame(
         {
             "modality_1": [[1, 1, 0], [1, 2, 1], [2, 0, -2], [0, 1, 2]],
             "modality_2": [[1, 0, 0], [0, 2, 1], [4, 1, 1], [3, 1, 2]],
+            "label": [0, 1, 0, 0],
         }
     )
 
-    label = np.array([0, 1, 0, 0])
     modalities = ["modality_1", "modality_2"]
     modality_weights = [4, 1]
 
     test1 = knn.KNN_Model(modalities=modalities, modality_weights=modality_weights, n_neighbors=2)
-    test1.fit_preprocess(train_df_2)
-    test1.transform_preprocess(train_df_2)
-    test1.fit(train_df_2, label)
-    x = test1.predict(train_df_2)
-    print(x)
-    assert x.shape == label.shape
+    test1.fit(train_df_2)
+    x1 = test1.predict(train_df_2)
+    assert x1.shape == train_df_2.get_column("label").shape
+
     preprocess2 = knn.Preprocess_Type.NORM_AFTER_CONCAT
     test2 = knn.KNN_Model(modalities=modalities, modality_weights=modality_weights, preprocess=preprocess2)
-    test2.fit_preprocess(train_df_2)
-    test2.transform_preprocess(train_df_2)
+    test2.fit(train_df_2)
+    x2 = test2.predict(train_df_2)
+    assert x2.shape == train_df_2.get_column("label").shape
 
     preprocess3 = knn.Preprocess_Type.NORM_SEPERATLY
     test3 = knn.KNN_Model(modalities=modalities, modality_weights=modality_weights, preprocess=preprocess3)
-    test3.fit_preprocess(train_df_2)
-    test3.transform_preprocess(train_df_2)
+    test3.fit(train_df_2)
+    x3 = test3.predict(train_df_2)
+    assert x3.shape == train_df_2.get_column("label").shape
 
 
-def test_knn_tuning():
-    with tempfile.TemporaryDirectory() as d:
-        # TODO make the dummy data in d
-        train_df = pl.DataFrame(
-            {
-                "modality_1": [[1, 1, 0], [1, 2, 1], [2, 0, -2], [0, 1, 2]],
-                "modality_2": [[1, 0, 0], [0, 2, 1], [4, 1, 1], [3, 1, 2]],
-            }
-        )
-        train_df.write_parquet(Path(d) / "train.parquet")
-        # val_df.write_parquet(Path(d) / "val.parquet")
-        # test_df.write_parquet(Path(d) / "test.parquet")
+def test_knn_tuning(tmp_path):
+    train_df = pl.DataFrame(
+        {
+            "modality_1": [[1, 1, 0], [1, 2, 1], [2, 0, -2], [0, 1, 2]],
+            "modality_2": [[1, 0, 0], [0, 2, 1], [4, 1, 1], [3, 1, 2]],
+            "label": [0, 0, 1, 1],
+        }
+    )
+    val_df = pl.DataFrame(
+        {
+            "modality_1": [[3, 5, 2], [4, 1, 3], [6, 2, 0], [7, 1, 1]],
+            "modality_2": [[2, 3, 1], [5, 0, 4], [1, 6, 2], [3, 2, 5]],
+            "label": [0, 1, 0, 1],
+        }
+    )
+    test_df = pl.DataFrame(
+        {
+            "modality_1": [[-2, 3, -1], [0, -1, 2], [-3, 1, -2], [1, -2, 3]],
+            "modality_2": [[3, -1, 0], [-2, 2, -3], [1, -3, 2], [0, 3, -1]],
+            "label": [0, 0, 1, 1],
+        }
+    )
+    train_df.write_parquet(Path(tmp_path) / "train.parquet")
+    val_df.write_parquet(Path(tmp_path) / "val.parquet")
+    test_df.write_parquet(Path(tmp_path) / "test.parquet")
 
-        test_config = dict(
-            modalities=["m1", "m2"],
-            modality_weights=[1, 1],
-            input_path=d,
-        )
+    test_config = dict(
+        modalities=["modality_1", "modality_2"],
+        modality_weights=[1, 1],
+        input_path=tmp_path,
+    )
 
-        with initialize(version_base=None, config_path="../src/meds_interp/configs/"):  # path to config.yaml
-            overrides = [f"{k}={v}" for k, v in test_config.items()]
-            cfg = compose(config_name="knn", overrides=overrides)  # config.yaml
-        knn.main(cfg)
+    with initialize(version_base=None, config_path="../src/meds_interp/configs/"):  # path to config.yaml
+        overrides = [f"{k}={v}" for k, v in test_config.items()]
+        cfg = compose(config_name="knn", overrides=overrides)  # config.yaml
+    knn.main(cfg)

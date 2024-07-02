@@ -1,0 +1,3 @@
+- modalities=["modality_1", "modality_2"]
+- modality_weights=[1,1]
+- input_path=/tmp/pytest-of-leander/pytest-0/test_knn_tuning0

@@ -186,17 +186,16 @@ class KNN_Model(BaseEstimator, ClassifierMixin):
 
         return X * reweight_vector
 
-    def fit(self, X, y):
+    def fit(self, X: pl.DataFrame):
         """Fit the model according to the given training data.
 
         Parameters
         ----------
-        X : array of shape (n_samples, n_features)
+        X : polars dataframe of shape (n_samples, n_features)
             Data used to fit the model.
-
-        y : array of shape (n_samples)
-            class labels of each example in X.
+            Has modality columns as well as a label column
         """
+        y = X.get_column("label")
         self.classes_ = unique_labels(y)
         self.fit_preprocess(X)
         X = self.transform_preprocess(X)
@@ -250,15 +249,14 @@ def main(cfg: DictConfig):
         n_neighbors=cfg.n_neighbors,
         algorithm=cfg.distance_metric,
         weights=cfg.neighbor_weighting,
-        preprocess=cfg.preprocess,
+        preprocess=Preprocess_Type[cfg.preprocess],
     )
-    # TODO: fix fit:
+
     train_df = pl.read_parquet(Path(cfg.input_path) / "train.parquet")
-    assert knn
-    assert train_df
-    # knn.fit(train_df)
-    # val_df = train_df
-    # pred_labels = knn.predict_proba(val_df)
+    knn.fit(train_df)
+    val_df = pl.read_parquet(Path(cfg.input_path) / "val.parquet")
+    pred_labels = knn.predict(val_df)
+    print(pred_labels)
 
 
 if __name__ == "__main__":

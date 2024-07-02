@@ -26,3 +26,5 @@ hydra:
       distance_metric: choice("l2", "ip")
       neighbor_weighting: choice("uniform", "distance")
       n_neighbors: tag(log, interval(2, 1000))
+      modality_weights: [interval(0, 1), interval(0, 1)]
+      # modality_weights: function_call(modalities)

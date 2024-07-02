@@ -1,0 +1,2 @@
+- modalities=["modality_1", "modality_2"]
+- modality_weights=[1,1]
