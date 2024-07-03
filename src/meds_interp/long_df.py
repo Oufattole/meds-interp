@@ -14,10 +14,10 @@ def generate_long_df(df: pl.DataFrame) -> pl.DataFrame:
             for value in row[embedding]:
                 long_rows.append(
                     {
-                        "Patient_ID": row["Patient_ID"],
-                        "Time": row["Time"],
-                        "Code": f"{embedding}_{i}",
-                        "Value": value,
+                        "patient_id": row["patient_id"],
+                        "timestamp": row["timestamp"],
+                        "code": f"{embedding}_{i}",
+                        "numerical_value": value,
                     }
                 )
                 i += 1
@@ -26,22 +26,30 @@ def generate_long_df(df: pl.DataFrame) -> pl.DataFrame:
     return long_df
 
 
-data_1 = {
-    "Patient_ID": [1, 1, 1, 2, 2, 2, 3],
-    "Time": [1, 2, 3, 1, 2, 3, 1],
-    "Label": [0, 1, 1, 0, 1, 1, 1],
-    "Embedding_1": [[0.1, 0.2, 0.2], [0.3, 0.5, 0.2], [0.5, 0.5, 0.1], [0.0, 0.4, 0.6],
-                    [0.7, 0.1, 0.2], [0.2, 0.2, 0.5], [0.7, 0.4, 0.1]],
-    "Embedding_2": [[0.5, 0.6], [0.7, 0.8], [0.1, 0.4], [0.3, 0.2], [0.4, 0.3], [0.1, 0.3], [0.4, 0.1]]
-}
-data_2 = {
-    "Patient_ID": [1, 1, 2],
-    "Time": [1, 2, 1],
-    "Label": [0, 1, 1],
-    "Embedding_1": [[0.1, 0.2], [0.3, 0.4], [0.2, 0.4]],
-    "Embedding_2": [[0.5, 0.6], [0.7, 0.8], [0.9, 1.0]]
-}
-df = pl.DataFrame(data_2)
-print(df)
-long_df = generate_long_df(df)
-print(long_df)
+if __name__ == "__main__":
+    data_1 = {
+        "Patient_ID": [1, 1, 1, 2, 2, 2, 3],
+        "Time": [1, 2, 3, 1, 2, 3, 1],
+        "Label": [0, 1, 1, 0, 1, 1, 1],
+        "Embedding_1": [
+            [0.1, 0.2, 0.2],
+            [0.3, 0.5, 0.2],
+            [0.5, 0.5, 0.1],
+            [0.0, 0.4, 0.6],
+            [0.7, 0.1, 0.2],
+            [0.2, 0.2, 0.5],
+            [0.7, 0.4, 0.1],
+        ],
+        "Embedding_2": [[0.5, 0.6], [0.7, 0.8], [0.1, 0.4], [0.3, 0.2], [0.4, 0.3], [0.1, 0.3], [0.4, 0.1]],
+    }
+    data_2 = {
+        "Patient_ID": [1, 1, 2],
+        "Time": [1, 2, 1],
+        "Label": [0, 1, 1],
+        "Embedding_1": [[0.1, 0.2], [0.3, 0.4], [0.2, 0.4]],
+        "Embedding_2": [[0.5, 0.6], [0.7, 0.8], [0.9, 1.0]],
+    }
+    df = pl.DataFrame(data_2)
+    print(df)
+    long_df = generate_long_df(df)
+    print(long_df)

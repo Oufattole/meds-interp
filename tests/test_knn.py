@@ -5,7 +5,6 @@ from hydra import compose, initialize
 
 from meds_interp import knn_raw_code as knn
 from meds_interp import meds_logistic_regression as lr
-from meds_interp import long_df as long
 
 
 def test_lr():
@@ -85,42 +84,3 @@ def test_knn_tuning(tmp_path):
         overrides = [f"{k}={v}" for k, v in test_config.items()]
         cfg = compose(config_name="knn", overrides=overrides)  # config.yaml
     knn.main(cfg)
-
-def test_MEDS_Tab(tmp_path):
-    train_df = pl.DataFrame(
-        {
-            "patient_id": [1, 1, 2],
-            "timestamp": [1, 2, 1],
-            "label": [0, 1, 1],
-            "Embedding_1": [[0.1, 0.2], [0.3, 0.4], [0.2, 0.4]],
-            "Embedding_2": [[0.5, 0.6], [0.7, 0.8], [0.9, 1.0]]
-        }
-    )
-    val_df = pl.DataFrame(
-        {
-            "patient_id": [1, 1, 2],
-            "timestamp": [1, 2, 1],
-            "label": [0, 1, 1],
-            "Embedding_1": [[0.1, 0.2], [0.3, 0.4], [0.2, 0.4]],
-            "Embedding_2": [[0.5, 0.6], [0.7, 0.8], [0.9, 1.0]]
-        }
-    )
-    test_df = pl.DataFrame(
-        {
-            "patient_id": [1, 1, 2],
-            "timestamp": [1, 2, 1],
-            "label": [0, 1, 1],
-            "Embedding_1": [[0.1, 0.2], [0.3, 0.4], [0.2, 0.4]],
-            "Embedding_2": [[0.5, 0.6], [0.7, 0.8], [0.9, 1.0]]
-        }
-    )
-
-    train_output_path = Path(tmp_path) / "train/train_0.parquet"
-    train_output_path.parent.mkdir()
-    val_output_path = Path(tmp_path) / "val/val_0.parquet"
-    val_output_path.parent.mkdir()
-    test_output_path = Path(tmp_path) / "test/test_0.parquet"
-    test_output_path.parent.mkdir()
-    long.generate_long_df(train_df).write_parquet(train_output_path)
-    long.generate_long_df(val_df).write_parquet(val_output_path)
-    long.generate_long_df(test_df).write_parquet(test_output_path)

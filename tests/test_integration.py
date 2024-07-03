@@ -4,6 +4,8 @@ from pathlib import Path
 import polars as pl
 from loguru import logger
 
+from meds_interp.long_df import generate_long_df
+
 
 def run_command(script: str, args: list[str], hydra_kwargs: dict[str, str], test_name: str):
     command_parts = [script] + args + [f"{k}={v}" for k, v in hydra_kwargs.items()]
@@ -55,3 +57,49 @@ def test_knn_tuning(tmp_path):
         test_config,
         "test knn",
     )
+
+
+def test_MEDS_Tab(tmp_path):
+    train_df = pl.DataFrame(
+        {
+            "patient_id": [1, 1, 2],
+            "timestamp": [1, 2, 1],
+            "label": [0, 1, 1],
+            "Embedding_1": [[0.1, 0.2], [0.3, 0.4], [0.2, 0.4]],
+            "Embedding_2": [[0.5, 0.6], [0.7, 0.8], [0.9, 1.0]],
+        }
+    )
+    val_df = pl.DataFrame(
+        {
+            "patient_id": [1, 1, 2],
+            "timestamp": [1, 2, 1],
+            "label": [0, 1, 1],
+            "Embedding_1": [[0.1, 0.2], [0.3, 0.4], [0.2, 0.4]],
+            "Embedding_2": [[0.5, 0.6], [0.7, 0.8], [0.9, 1.0]],
+        }
+    )
+    test_df = pl.DataFrame(
+        {
+            "patient_id": [1, 1, 2],
+            "timestamp": [1, 2, 1],
+            "label": [0, 1, 1],
+            "Embedding_1": [[0.1, 0.2], [0.3, 0.4], [0.2, 0.4]],
+            "Embedding_2": [[0.5, 0.6], [0.7, 0.8], [0.9, 1.0]],
+        }
+    )
+
+    train_output_path = Path(tmp_path) / "final_cohort/train/0.parquet"
+    train_output_path.parent.mkdir(parents=True)
+
+    val_output_path = Path(tmp_path) / "final_cohort/val/0.parquet"
+    val_output_path.parent.mkdir(parents=True)
+
+    test_output_path = Path(tmp_path) / "final_cohort/test/0.parquet"
+    test_output_path.parent.mkdir(parents=True)
+
+    generate_long_df(train_df).write_parquet(train_output_path)
+    generate_long_df(val_df).write_parquet(val_output_path)
+    generate_long_df(test_df).write_parquet(test_output_path)
+
+    meds_tab_config = dict(MEDS_cohort_dir=tmp_path)
+    run_command("meds-tab-describe", [], meds_tab_config, "describe_codes")
