@@ -1,8 +1,0 @@
-input_path: ???
-output_path: ${input_path}/best_params.yaml
-preprocess: NONE
-distance_metric: l2
-neighbor_weighting: uniform
-n_neighbors: 3
-modalities: ???
-modality_weights: ???
