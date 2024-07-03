@@ -10,20 +10,20 @@ tabularization:
   min_code_inclusion_frequency: 10
   filtered_code_metadata_fp: ${MEDS_cohort_dir}/tabularized_code_metadata.parquet
   window_sizes:
-  - 1d
-  - 7d
-  - 30d
-  - 365d
-  - full
+    - 1d
+    - 7d
+    - 30d
+    - 365d
+    - full
   aggs:
-  - static/present
-  - static/first
-  - code/count
-  - value/count
-  - value/sum
-  - value/sum_sqd
-  - value/min
-  - value/max
+    - static/present
+    - static/first
+    - code/count
+    - value/count
+    - value/sum
+    - value/sum_sqd
+    - value/min
+    - value/max
   _resolved_codes: ${filter_to_codes:${tabularization.allowed_codes},${tabularization.min_code_inclusion_frequency},${tabularization.filtered_code_metadata_fp}}
 input_code_metadata_fp: ${MEDS_cohort_dir}/code_metadata.parquet
 input_dir: ${MEDS_cohort_dir}/final_cohort

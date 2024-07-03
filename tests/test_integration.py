@@ -1,4 +1,5 @@
 import subprocess
+from datetime import datetime
 from pathlib import Path
 
 import polars as pl
@@ -63,7 +64,7 @@ def test_MEDS_Tab(tmp_path):
     train_df = pl.DataFrame(
         {
             "patient_id": [1, 1, 2],
-            "timestamp": [1, 2, 1],
+            "timestamp": [datetime(2024, 1, 1), datetime(2024, 1, 2), datetime(2024, 3, 1)],
             "label": [0, 1, 1],
             "Embedding_1": [[0.1, 0.2], [0.3, 0.4], [0.2, 0.4]],
             "Embedding_2": [[0.5, 0.6], [0.7, 0.8], [0.9, 1.0]],
@@ -72,7 +73,7 @@ def test_MEDS_Tab(tmp_path):
     val_df = pl.DataFrame(
         {
             "patient_id": [1, 1, 2],
-            "timestamp": [1, 2, 1],
+            "timestamp": [datetime(2024, 1, 1), datetime(2024, 1, 2), datetime(2024, 3, 1)],
             "label": [0, 1, 1],
             "Embedding_1": [[0.1, 0.2], [0.3, 0.4], [0.2, 0.4]],
             "Embedding_2": [[0.5, 0.6], [0.7, 0.8], [0.9, 1.0]],
@@ -81,7 +82,7 @@ def test_MEDS_Tab(tmp_path):
     test_df = pl.DataFrame(
         {
             "patient_id": [1, 1, 2],
-            "timestamp": [1, 2, 1],
+            "timestamp": [datetime(2024, 1, 1), datetime(2024, 1, 2), datetime(2024, 3, 1)],
             "label": [0, 1, 1],
             "Embedding_1": [[0.1, 0.2], [0.3, 0.4], [0.2, 0.4]],
             "Embedding_2": [[0.5, 0.6], [0.7, 0.8], [0.9, 1.0]],
@@ -110,14 +111,8 @@ def test_MEDS_Tab(tmp_path):
     )
     meds_tab_tabularize["tabularization.min_code_inclusion_frequency"] = 10
     meds_tab_tabularize["tabularization.window_sizes"] = "[1d,30d,365d,full]"
-    meds_tab_tabularize[
-        "tabularization.aggs"
-    ] = "[value/count,value/sum,value/sum_sqd,value/min,value/max]"
-    run_command(
-        "meds-tab-tabularize-static", [], meds_tab_tabularize, "tabularize time series data"
-    )
+    meds_tab_tabularize["tabularization.min_code_inclusion_frequency"] = 0
+    meds_tab_tabularize["tabularization.aggs"] = "[value/count,value/sum,value/sum_sqd,value/min,value/max]"
+    run_command("meds-tab-tabularize-static", [], meds_tab_tabularize, "tabularize time series data")
     args = ["--multirun", "hydra/launcher=joblib", "'worker=range(0,1)'"]
-    run_command(
-        "meds-tab-tabularize-time-series", args, meds_tab_tabularize, "tabularize time series data"
-    )
-
+    run_command("meds-tab-tabularize-time-series", args, meds_tab_tabularize, "tabularize time series data")
