@@ -71,11 +71,12 @@ def test_knn_tuning(tmp_path):
     val_df.write_parquet(Path(tmp_path) / "val.parquet")
     test_df.write_parquet(Path(tmp_path) / "test.parquet")
 
-    test_config = dict(
-        modalities=["modality_1", "modality_2"],
-        modality_weights=[1, 1],
-        input_path=tmp_path,
-    )
+    test_config = {
+        "modalities": ["modality_1", "modality_2"],
+        "+weights.modality_1": 1,
+        "+weights.modality_2": 1,
+        "input_path": tmp_path,
+    }
 
     with initialize(version_base=None, config_path="../src/meds_interp/configs/"):  # path to config.yaml
         overrides = [f"{k}={v}" for k, v in test_config.items()]

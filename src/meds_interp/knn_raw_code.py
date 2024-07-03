@@ -243,9 +243,10 @@ if not config_yaml.is_file():
 
 @hydra.main(version_base=None, config_path=str(config_yaml.parent.resolve()), config_name=config_yaml.stem)
 def main(cfg: DictConfig):
+    modality_weights = [cfg.weights[modality] for modality in cfg.modalities]
     knn = KNN_Model(
         modalities=cfg.modalities,
-        modality_weights=cfg.modality_weights,
+        modality_weights=modality_weights,
         n_neighbors=cfg.n_neighbors,
         algorithm=cfg.distance_metric,
         weights=cfg.neighbor_weighting,
@@ -256,7 +257,7 @@ def main(cfg: DictConfig):
     knn.fit(train_df)
     val_df = pl.read_parquet(Path(cfg.input_path) / "val.parquet")
     pred_labels = knn.predict(val_df)
-    print(pred_labels)
+    return roc_auc_score(val_df.get_column("label").to_numpy(), pred_labels)
 
 
 if __name__ == "__main__":
