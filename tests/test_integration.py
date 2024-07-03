@@ -8,7 +8,7 @@ from meds_interp.long_df import generate_long_df
 
 
 def run_command(script: str, args: list[str], hydra_kwargs: dict[str, str], test_name: str):
-    command_parts = [script] + args + [f"{k}={v}" for k, v in hydra_kwargs.items()]
+    command_parts = [script] + args + [f"'{k}={v}'" for k, v in hydra_kwargs.items()]
     command_str = " ".join(command_parts)
     logger.info(command_str)
     command_out = subprocess.run(command_str, shell=True, capture_output=True)
@@ -103,3 +103,21 @@ def test_MEDS_Tab(tmp_path):
 
     meds_tab_config = dict(MEDS_cohort_dir=tmp_path)
     run_command("meds-tab-describe", [], meds_tab_config, "describe_codes")
+
+    meds_tab_tabularize = dict(
+        MEDS_cohort_dir=tmp_path,
+        do_overwrite=False,
+    )
+    meds_tab_tabularize["tabularization.min_code_inclusion_frequency"] = 10
+    meds_tab_tabularize["tabularization.window_sizes"] = "[1d,30d,365d,full]"
+    meds_tab_tabularize[
+        "tabularization.aggs"
+    ] = "[value/count,value/sum,value/sum_sqd,value/min,value/max]"
+    run_command(
+        "meds-tab-tabularize-static", [], meds_tab_tabularize, "tabularize time series data"
+    )
+    args = ["--multirun", "hydra/launcher=joblib", "'worker=range(0,1)'"]
+    run_command(
+        "meds-tab-tabularize-time-series", args, meds_tab_tabularize, "tabularize time series data"
+    )
+
