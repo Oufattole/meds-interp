@@ -1,12 +1,9 @@
 import polars as pl
 
 
-def generate_long_df(df: pl.DataFrame):
+def generate_long_df(df: pl.DataFrame) -> pl.DataFrame:
     """Makes a long form version of the given dataframe input df has columns "patient ID", "time", "label",
-    "embedding_1", ...
-
-    "embedding_n"
-    """
+    "embedding_1" all the way to "embedding_n"."""
     long_rows = []
     embeddings = df.columns[3:]
     for row in df.iter_rows(named=True):
