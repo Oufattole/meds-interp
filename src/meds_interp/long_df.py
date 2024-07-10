@@ -2,8 +2,8 @@ import polars as pl
 
 
 def generate_long_df(df: pl.DataFrame) -> pl.DataFrame:
-    """Makes a long form version of the given dataframe input df has columns "patient ID", "time", "label",
-    "embedding_1" all the way to "embedding_n"."""
+    """Makes a long form version of the given dataframe input df has columns "patient_id", "timestamp",
+    "label", "embedding_1" all the way to "embedding_n"."""
     long_rows = []
     embeddings = df.columns[3:]
     for row in df.iter_rows(named=True):
@@ -11,16 +11,26 @@ def generate_long_df(df: pl.DataFrame) -> pl.DataFrame:
             i = 0
             if row[embedding] is None:
                 continue
-            for value in row[embedding]:
+            elif isinstance(row[embedding], int):
                 long_rows.append(
                     {
                         "patient_id": row["patient_id"],
                         "timestamp": row["timestamp"],
-                        "code": f"{embedding}_{i}",
-                        "numerical_value": value,
+                        "code": f"{embedding}",
+                        "numerical_value": row[embedding],
                     }
                 )
-                i += 1
+            else:
+                for value in row[embedding]:
+                    long_rows.append(
+                        {
+                            "patient_id": row["patient_id"],
+                            "timestamp": row["timestamp"],
+                            "code": f"{embedding}_{i}",
+                            "numerical_value": value,
+                        }
+                    )
+                    i += 1
 
     long_df = pl.DataFrame(long_rows)
     return long_df
@@ -48,6 +58,7 @@ if __name__ == "__main__":
         "label": [0, 1, 1],
         "Embedding_1": [[0.1, 0.2], [0.3, 0.4], [0.2, 0.4]],
         "Embedding_2": [[0.5, 0.6], [0.7, 0.8], [0.9, 1.0]],
+        "Embedding_3": [1, 2, 3],
     }
     df = pl.DataFrame(data_2)
     print(df)

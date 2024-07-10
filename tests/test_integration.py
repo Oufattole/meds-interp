@@ -113,6 +113,6 @@ def test_MEDS_Tab(tmp_path):
     meds_tab_tabularize["tabularization.window_sizes"] = "[1d,30d,365d,full]"
     meds_tab_tabularize["tabularization.min_code_inclusion_frequency"] = 0
     meds_tab_tabularize["tabularization.aggs"] = "[value/count,value/sum,value/sum_sqd,value/min,value/max]"
-    run_command("meds-tab-tabularize-static", [], meds_tab_tabularize, "tabularize time series data")
+    run_command("meds-tab-tabularize-static", [], meds_tab_tabularize, "tabularize static data")
     args = ["--multirun", "hydra/launcher=joblib", "'worker=range(0,1)'"]
     run_command("meds-tab-tabularize-time-series", args, meds_tab_tabularize, "tabularize time series data")
