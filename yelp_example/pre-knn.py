@@ -79,7 +79,7 @@ def process_photos():
             batch.to(device)
             with torch.no_grad():
                 embeddings = model.get_image_features(pixel_values=batch["pixel_values"].squeeze(dim=1))
-                photo_all_embeddings.append(embeddings.cpu().numpy())
+                photo_all_embeddings.append(embeddings.detach().cpu().numpy())
         photo_stacked_embeddings = np.vstack(photo_all_embeddings)
         np.save(photo_output_path, photo_stacked_embeddings)
 
@@ -90,15 +90,16 @@ def process_photos():
         "labels": photo_labels,
     }
     photo_table = pl.DataFrame(photo_table)
+
     unique_photo_labels = photo_table["labels"].unique().to_list()
     for label in unique_photo_labels:
         photo_table = photo_table.with_columns(
             pl.when(pl.col("labels") == label)
             .then(pl.col("image_embeddings"))
             .otherwise(None)
-            .alias(f"embeddings_{label}")
+            .alias(f"img_embeddings_{label}")
         )
-    photo_table.drop(["captions", "labels"])
+    photo_table = photo_table.drop(["image_embeddings", "labels"])
     return photo_table
 
 
@@ -136,7 +137,7 @@ def process_captions():
 
     # Dataframe of the caption embeddings and the labels
     photo_caption_table = {
-        "business_ids": caption_business_ids,
+        "business_id": caption_business_ids,
         "captions": np.load(caption_output_path),
         "labels": caption_labels,
     }
@@ -147,9 +148,9 @@ def process_captions():
             pl.when(pl.col("labels") == label)
             .then(pl.col("captions"))
             .otherwise(None)
-            .alias(f"embeddings_{label}")
+            .alias(f"cap_embeddings_{label}")
         )
-    photo_caption_table.drop(["captions", "labels"])
+    photo_caption_table = photo_caption_table.drop(["captions", "labels"])
     return photo_caption_table
 
 
@@ -211,7 +212,7 @@ def process_review():
     review_table = {
         "user_id": review_user,
         "timestamp": np.array(timestamps, dtype="datetime64[ns]"),
-        "business_ids": review_business,
+        "business_id": review_business,
         "review_embeddings": np.load("/home/leander/MIT_projects/meds-interp/reviews.npy"),
         "useful": useful_count,
         "funny": funny_count,
@@ -295,7 +296,7 @@ def process_business():
         "attribute_embeddings": np.load(business_attributes_output_path),
         "category_embeddings": np.load(business_categories_output_path),
         "stars": stars,
-        "review_count": review_count,
+        "bus_review_count": review_count,
     }
     business_table = pl.DataFrame(business_table)
 
@@ -350,7 +351,7 @@ def process_user():
     user_table = {
         "user_id": user_id,
         "yelping_since": np.array(yelping_since, dtype="datetime64[ns]"),
-        "review_count": review_count,
+        "user_review_count": review_count,
         "useful_sent": useful_sent,
         "funny_sent": funny_sent,
         "cool_sent": cool_sent,
@@ -371,15 +372,17 @@ def process_user():
     }
     user_table = pl.DataFrame(user_table)
 
+    return user_table
+
 
 def aggregate_df():
-    def mean_vector(series):
-        vectors = [vector for vector in series.to_list() if vector is not None]
-        if vectors:
-            mean_vec = np.mean(vectors, axis=0).tolist()
-            return mean_vec
-        else:
-            return []
+    # def mean_vector(series):
+    #     vectors = [vector for vector in series.to_list() if vector is not None]
+    #     if vectors:
+    #         mean_vec = np.mean(vectors, axis=0).tolist()
+    #         return mean_vec
+    #     else:
+    #         return []
 
     # review_user_grouped = process_review().group_by("user_id", maintain_order=True).agg([
     #     pl.col("review_embeddings").map_elements(mean_vector, return_dtype=pl.List(pl.Float64)),
@@ -388,29 +391,47 @@ def aggregate_df():
     #     pl.col("cool").mean(),
     #     pl.col("stars").mean(),
     # ])
-    # print(review_user_grouped)
+    # user_review_joined = review_user_grouped.join(process_user(), on="user_id", how="left", coalesce=True)
+    # print(user_review_joined)
+    # review_business_grouped = process_review().group_by("business_id", maintain_order=True).agg([
+    #     pl.col("review_embeddings").map_elements(mean_vector, return_dtype=pl.List(pl.Float64)),
+    #     pl.col("useful").mean(),
+    #     pl.col("funny").mean(),
+    #     pl.col("cool").mean(),
+    #     pl.col("stars").mean(),
+    # ])
+    # # print(review_business_grouped)
 
-    photos_grouped = (
-        process_photos()
-        .group_by("business_id", maintain_order=True)
-        .agg(
-            [
-                pl.col("embeddings_inside").map_elements(mean_vector, return_dtype=pl.List(pl.Float64)),
-                pl.col("embeddings_outside").map_elements(mean_vector, return_dtype=pl.List(pl.Float64)),
-                pl.col("embeddings_food").map_elements(mean_vector, return_dtype=pl.List(pl.Float64)),
-                pl.col("embeddings_drink").map_elements(mean_vector, return_dtype=pl.List(pl.Float64)),
-                pl.col("embeddings_menu").map_elements(mean_vector, return_dtype=pl.List(pl.Float64)),
-            ]
-        )
-    )
-    for label in ["inside", "outside", "food", "drink", "menu"]:
-        photos_grouped = photos_grouped.with_columns(
-            pl.when(pl.col(f"embeddings_{label}") == [])
-            .then(None)
-            .otherwise(pl.col(f"embeddings_{label}"))
-            .alias(f"embeddings_{label}")
-        )
-    print(photos_grouped)
+    # photos_grouped = (
+    #     process_photos()
+    #     .group_by("business_id", maintain_order=True)
+    #     .agg(
+    #         [
+    #             pl.col("embeddings_inside").map_elements(mean_vector, return_dtype=pl.List(pl.Float64)),
+    #             pl.col("embeddings_outside").map_elements(mean_vector, return_dtype=pl.List(pl.Float64)),
+    #             pl.col("embeddings_food").map_elements(mean_vector, return_dtype=pl.List(pl.Float64)),
+    #             pl.col("embeddings_drink").map_elements(mean_vector, return_dtype=pl.List(pl.Float64)),
+    #             pl.col("embeddings_menu").map_elements(mean_vector, return_dtype=pl.List(pl.Float64)),
+    #         ]
+    #     )
+    # )
+    # for label in ["inside", "outside", "food", "drink", "menu"]:
+    #     photos_grouped = photos_grouped.with_columns(
+    #         pl.when(pl.col(f"embeddings_{label}") == [])
+    #         .then(None)
+    #         .otherwise(pl.col(f"embeddings_{label}"))
+    #         .alias(f"embeddings_{label}")
+    #     )
+    # # print(photos_grouped)
+    # print(photo_review_joined)
+
+    # large_df = process_review().join(process_user(), on="user_id", how="left", coalesce=True)
+    # import pdb; pdb.set_trace()
+    # large_df = large_df.join(process_captions(), on="business_id", how="left", coalesce=True)
+    # large_df = large_df.join(process_photos(), on="business_id", how="left", coalesce=True)
+    # large_df = large_df.join(process_business(), on="business_id", how="left", coalesce=True)
+
+    print(process_photos())
 
 
 if __name__ == "__main__":
