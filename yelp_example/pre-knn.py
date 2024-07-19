@@ -1,8 +1,5 @@
 import json
 import os
-
-os.environ["POLARS_MAX_THREADS"] = "1"
-
 import numpy as np
 import polars as pl
 import torch
@@ -10,6 +7,8 @@ from PIL import Image, UnidentifiedImageError
 from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
 from transformers import CLIPModel, CLIPProcessor
+from loguru import logger
+from meds_interp.long_df import generate_long_df
 
 model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
 processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
@@ -26,8 +25,8 @@ filepaths = [
     "/mnt/hdd/shared/shared/yelp_dataset/raw/yelp_academic_dataset_review.json",
     "/mnt/hdd/shared/shared/yelp_dataset_image/photos.json",
 ]
-photo_table_output_path = "/home/leander/projects/meds-interp/photo_table.parquet"
-caption_table_output_path = "/home/leander/projects/meds-interp/caption_table.parquet"
+photo_table_output_path = "/home/shared/yelp/photo_table.parquet"
+caption_table_output_path = "/home/shared/yelp/caption_table.parquet"
 
 
 def process_photo_captions():
@@ -77,7 +76,7 @@ def process_photo_captions():
                 image_tensor = image_processor(image, return_tensors="pt")
                 return image_tensor
 
-        photo_output_path = "/home/leander/projects/meds-interp/photos.npy"
+        photo_output_path = "/home/shared/yelp/photos.npy"
         if not os.path.exists(photo_output_path):
             photo_ids_list = photo_ids
             photo_dataloader = DataLoader(
@@ -126,7 +125,7 @@ def process_photo_captions():
             def __getitem__(self, idx):
                 return self.photo_captions_list[idx]
 
-        caption_output_path = "/home/leander/projects/meds-interp/captions.npy"
+        caption_output_path = "/home/shared/yelp/captions.npy"
         if not os.path.exists(caption_output_path):
             captions_dataloader = DataLoader(CaptionDataset(captions), shuffle=False, batch_size=64)
             caption_all_embeddings = []
@@ -162,7 +161,7 @@ def process_photo_captions():
 
 
 # Load all of the reviews into a dataframe
-reviews_table_output_path = "/home/leander/projects/meds-interp/reviews_table.parquet"
+reviews_table_output_path = "/home/shared/yelp/reviews_table.parquet"
 
 
 def process_review():
@@ -208,7 +207,7 @@ def process_review():
             def __getitem__(self, idx):
                 return self.reviews_list[idx]
 
-        review_output_path = "/home/leander/projects/meds-interp/reviews.npy"
+        review_output_path = "/home/shared/yelp/reviews.npy"
         model.eval()
         if not os.path.exists(review_output_path):
             review_dataloader = DataLoader(ReviewDataset(review), shuffle=False, batch_size=1024)
@@ -240,7 +239,7 @@ def process_review():
         reviews_table.write_parquet(reviews_table_output_path)
 
 
-business_table_output_path = "/home/leander/projects/meds-interp/business_table.parquet"
+business_table_output_path = "/home/shared/yelp/business_table.parquet"
 
 
 def process_business():
@@ -280,7 +279,7 @@ def process_business():
             def __getitem__(self, idx):
                 return self.business_list[idx]
 
-        business_categories_output_path = "/home/leander/projects/meds-interp/business_categories.npy"
+        business_categories_output_path = "/home/shared/yelp/business_categories.npy"
         model.eval()
         if not os.path.exists(business_categories_output_path):
             business_cat_dataloader = DataLoader(BusinessDataset(categories), shuffle=False, batch_size=64)
@@ -297,7 +296,7 @@ def process_business():
             business_cat_stacked_embeddings = np.vstack(business_cat_all_embeddings)
             np.save(business_categories_output_path, business_cat_stacked_embeddings)
 
-        business_attributes_output_path = "/home/leander/projects/meds-interp/business_attributes.npy"
+        business_attributes_output_path = "/home/shared/yelp/business_attributes.npy"
         model.eval()
         if not os.path.exists(business_attributes_output_path):
             business_att_dataloader = DataLoader(BusinessDataset(attributes), shuffle=False, batch_size=64)
@@ -325,7 +324,7 @@ def process_business():
         business_table.write_parquet(business_table_output_path)
 
 
-user_table_output_path = "/home/leander/projects/meds-interp/user_table.parquet"
+user_table_output_path = "/home/shared/yelp/user_table.parquet"
 
 
 def process_user():
@@ -466,24 +465,43 @@ def aggregate_df():
                 'cap_embeddings_outside', 'img_embeddings_menu', 'img_embeddings_food', 'img_embeddings_outside', \
                 'img_embeddings_inside', 'img_embeddings_drink']
     
-    review_df = pl.scan_parquet(reviews_table_output_path)
+    logger.info("Reading Reviews")
+    review_df = pl.read_parquet(reviews_table_output_path)
     review_df = review_df.head(10)
-    user_df = pl.scan_parquet(user_table_output_path)
-    captions_df = pl.scan_parquet(caption_table_output_path)
-    photos_df = pl.scan_parquet(photo_table_output_path)
-    business_df = pl.scan_parquet(business_table_output_path)
+    logger.info("Reading Users")
+    user_df = pl.read_parquet(user_table_output_path)
+    logger.info("Reading Captions")
+    captions_df = pl.read_parquet(caption_table_output_path)
+    logger.info("Reading Photos")
+    photos_df = pl.read_parquet(photo_table_output_path)
+    logger.info("Reading Business")
+    business_df = pl.read_parquet(business_table_output_path)
+    logger.info("Merging users")
     large_df = review_df.join(user_df, on="user_id", how="left")#, coalesce=True)
+    logger.info("Merging captions")
     large_df = large_df.join(captions_df, on="business_id", how="left")#, coalesce=True)
+    logger.info("Merging photos")
     large_df = large_df.join(photos_df, on="business_id", how="left")#, coalesce=True)
+    logger.info("Merging business")
     large_df = large_df.join(business_df, on="business_id", how="left")#, coalesce=True)
-    large_df = large_df.group_by("review_id", maintain_order=True).agg([
-        pl.col(col).first() if col not in special_columns \
-        else pl.col(col).map_elements(mean_vector, return_dtype=pl.List(pl.Float64))
-        for col in columns
-    ])
+    logger.info("Aggregating")
     import pdb; pdb.set_trace()
-    large_df.collect().write_parquet("/home/leander/projects/meds-interp/big_table.parquet")
+    # TODO Fix this aggregation
+    long_df = generate_long_df(large_df, id_column="review_id", timestamp_column="timestamp")
+    long_df = long_df.group_by("review_id", "code").mean()
+    logger.info("writing")
+    long_df.write_parquet("/home/shared/yelp/big_table.parquet")
 
+
+# large_df.select([pl.arange(0, pl.col("category_embeddings").arr.rank().list.len())])
+
+
+# large_df.select(pl.col("category_embeddings").arr.to_list().eval(pl.element().alias("embedding"), parallel=True).with_columns(pl.arange(0, pl.count()).alias("index")))
+
+# large_df.select([pl.arange(0, pl.col("category_embeddings").arr.to_list().len()).alias("index")])
+
+# large_df.select([pl.col("category_embeddings").explode().alias("embedding"),pl.arange(0, pl.col("category_embeddings").len()).alias("index")])
+# large_df.select([pl.col("category_embeddings").explode()])
 
 
 if __name__ == "__main__":

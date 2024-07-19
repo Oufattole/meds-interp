@@ -1,7 +1,7 @@
 import polars as pl
 
 
-def generate_long_df(df: pl.DataFrame) -> pl.DataFrame:
+def generate_long_df(df: pl.DataFrame, id_column="patient_id", timestamp_column="timestamp") -> pl.DataFrame:
     """Makes a long form version of the given dataframe input df has columns "patient_id", "timestamp",
     "label", "embedding_1" all the way to "embedding_n"."""
     long_rows = []
@@ -14,8 +14,8 @@ def generate_long_df(df: pl.DataFrame) -> pl.DataFrame:
             elif isinstance(row[embedding], int):
                 long_rows.append(
                     {
-                        "patient_id": row["patient_id"],
-                        "timestamp": row["timestamp"],
+                        id_column: row[id_column],
+                        timestamp_column: row[timestamp_column],
                         "code": f"{embedding}",
                         "numerical_value": row[embedding],
                     }
@@ -24,8 +24,8 @@ def generate_long_df(df: pl.DataFrame) -> pl.DataFrame:
                 for value in row[embedding]:
                     long_rows.append(
                         {
-                            "patient_id": row["patient_id"],
-                            "timestamp": row["timestamp"],
+                            id_column: row[id_column],
+                            timestamp_column: row[timestamp_column],
                             "code": f"{embedding}_{i}",
                             "numerical_value": value,
                         }
