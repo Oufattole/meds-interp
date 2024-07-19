@@ -21,13 +21,13 @@ assert device == "cuda"
 model.to(device)
 
 filepaths = [
-    "/mnt/hdd/shared/yelp_dataset/raw/yelp_academic_dataset_business.json",
-    "/mnt/hdd/shared/yelp_dataset/raw/yelp_academic_dataset_user.json",
-    "/mnt/hdd/shared/yelp_dataset/raw/yelp_academic_dataset_review.json",
-    "/mnt/hdd/shared/yelp_dataset_image/photos.json",
+    "/mnt/hdd/shared/shared/yelp_dataset/raw/yelp_academic_dataset_business.json",
+    "/mnt/hdd/shared/shared/yelp_dataset/raw/yelp_academic_dataset_user.json",
+    "/mnt/hdd/shared/shared/yelp_dataset/raw/yelp_academic_dataset_review.json",
+    "/mnt/hdd/shared/shared/yelp_dataset_image/photos.json",
 ]
-photo_table_output_path = "/home/leander/MIT_projects/meds-interp/photo_table.parquet"
-caption_table_output_path = "/home/leander/MIT_projects/meds-interp/caption_table.parquet"
+photo_table_output_path = "/home/leander/projects/meds-interp/photo_table.parquet"
+caption_table_output_path = "/home/leander/projects/meds-interp/caption_table.parquet"
 
 
 def process_photo_captions():
@@ -35,7 +35,7 @@ def process_photo_captions():
         not os.path.exists(photo_table_output_path)
         or pl.scan_parquet(photo_table_output_path, n_rows=1).collect().is_empty()
     ):
-        with open("/mnt/hdd/shared/yelp_dataset_image/photos.json") as r:
+        with open("/mnt/hdd/shared/shared/yelp_dataset_image/photos.json") as r:
             photo_ids = []
             photo_business_ids = []
             photo_labels = []
@@ -45,7 +45,7 @@ def process_photo_captions():
             for line in r:
                 data = json.loads(line)
                 try:
-                    img_path = "/mnt/hdd/shared/yelp_dataset_image" + "/photos/" + data["photo_id"] + ".jpg"
+                    img_path = "/mnt/hdd/shared/shared/yelp_dataset_image" + "/photos/" + data["photo_id"] + ".jpg"
                     Image.open(img_path)
                     photo_ids.append(data["photo_id"])
                     photo_business_ids.append(data["business_id"])
@@ -71,13 +71,13 @@ def process_photo_captions():
 
             def __getitem__(self, idx):
                 img_path = (
-                    "/mnt/hdd/shared/yelp_dataset_image" + "/photos/" + self.photo_ids_list[idx] + ".jpg"
+                    "/mnt/hdd/shared/shared/yelp_dataset_image" + "/photos/" + self.photo_ids_list[idx] + ".jpg"
                 )
                 image = Image.open(img_path)
                 image_tensor = image_processor(image, return_tensors="pt")
                 return image_tensor
 
-        photo_output_path = "/home/leander/MIT_projects/meds-interp/photos.npy"
+        photo_output_path = "/home/leander/projects/meds-interp/photos.npy"
         if not os.path.exists(photo_output_path):
             photo_ids_list = photo_ids
             photo_dataloader = DataLoader(
@@ -126,7 +126,7 @@ def process_photo_captions():
             def __getitem__(self, idx):
                 return self.photo_captions_list[idx]
 
-        caption_output_path = "/home/leander/MIT_projects/meds-interp/captions.npy"
+        caption_output_path = "/home/leander/projects/meds-interp/captions.npy"
         if not os.path.exists(caption_output_path):
             captions_dataloader = DataLoader(CaptionDataset(captions), shuffle=False, batch_size=64)
             caption_all_embeddings = []
@@ -162,15 +162,16 @@ def process_photo_captions():
 
 
 # Load all of the reviews into a dataframe
-review_table_output_path = "/home/leander/MIT_projects/meds-interp/review_table.parquet"
+reviews_table_output_path = "/home/leander/projects/meds-interp/reviews_table.parquet"
 
 
 def process_review():
     if (
-        not os.path.exists(review_table_output_path)
-        or pl.scan_parquet(review_table_output_path, n_rows=1).collect().is_empty()
+        not os.path.exists(reviews_table_output_path)
+        or pl.scan_parquet(reviews_table_output_path, n_rows=1).collect().is_empty()
     ):
-        with open("/mnt/hdd/shared/yelp_dataset/raw/yelp_academic_dataset_review.json") as r:
+        with open("/mnt/hdd/shared/shared/yelp_dataset/raw/yelp_academic_dataset_review.json") as r:
+            review_id = []
             review_user = []
             review = []
             review_business = []
@@ -182,6 +183,7 @@ def process_review():
             for line in r:
                 data = json.loads(line)
 
+                review_id.append(data["review_id"])
                 review.append(data["text"])
                 review_user.append(data["user_id"])
                 review_business.append(data["business_id"])
@@ -206,7 +208,7 @@ def process_review():
             def __getitem__(self, idx):
                 return self.reviews_list[idx]
 
-        review_output_path = "/home/leander/MIT_projects/meds-interp/reviews.npy"
+        review_output_path = "/home/leander/projects/meds-interp/reviews.npy"
         model.eval()
         if not os.path.exists(review_output_path):
             review_dataloader = DataLoader(ReviewDataset(review), shuffle=False, batch_size=1024)
@@ -223,21 +225,22 @@ def process_review():
             review_stacked_embeddings = np.vstack(review_all_embeddings)
             np.save(review_output_path, review_stacked_embeddings)
 
-        review_table = {
+        reviews_table = {
+            "review_id": review_id,
             "user_id": review_user,
             "timestamp": np.array(timestamps, dtype="datetime64[ns]"),
             "business_id": review_business,
-            "review_embeddings": np.load("/home/leander/MIT_projects/meds-interp/reviews.npy"),
+            "review_embeddings": np.load(review_output_path),
             "useful": useful_count,
             "funny": funny_count,
             "cool": cool_count,
             "stars": stars,
         }
-        review_table = pl.DataFrame(review_table)
-        review_table.write_parquet(review_table_output_path)
+        reviews_table = pl.DataFrame(reviews_table)
+        reviews_table.write_parquet(reviews_table_output_path)
 
 
-business_table_output_path = "/home/leander/MIT_projects/meds-interp/business_table.parquet"
+business_table_output_path = "/home/leander/projects/meds-interp/business_table.parquet"
 
 
 def process_business():
@@ -245,7 +248,7 @@ def process_business():
         not os.path.exists(business_table_output_path)
         or pl.scan_parquet(business_table_output_path, n_rows=1).collect().is_empty()
     ):
-        with open("/mnt/hdd/shared/yelp_dataset/raw/yelp_academic_dataset_business.json") as r:
+        with open("/mnt/hdd/shared/shared/yelp_dataset/raw/yelp_academic_dataset_business.json") as r:
             business_id = []
             stars = []
             review_count = []
@@ -277,7 +280,7 @@ def process_business():
             def __getitem__(self, idx):
                 return self.business_list[idx]
 
-        business_categories_output_path = "/home/leander/MIT_projects/meds-interp/business_categories.npy"
+        business_categories_output_path = "/home/leander/projects/meds-interp/business_categories.npy"
         model.eval()
         if not os.path.exists(business_categories_output_path):
             business_cat_dataloader = DataLoader(BusinessDataset(categories), shuffle=False, batch_size=64)
@@ -294,7 +297,7 @@ def process_business():
             business_cat_stacked_embeddings = np.vstack(business_cat_all_embeddings)
             np.save(business_categories_output_path, business_cat_stacked_embeddings)
 
-        business_attributes_output_path = "/home/leander/MIT_projects/meds-interp/business_attributes.npy"
+        business_attributes_output_path = "/home/leander/projects/meds-interp/business_attributes.npy"
         model.eval()
         if not os.path.exists(business_attributes_output_path):
             business_att_dataloader = DataLoader(BusinessDataset(attributes), shuffle=False, batch_size=64)
@@ -322,7 +325,7 @@ def process_business():
         business_table.write_parquet(business_table_output_path)
 
 
-user_table_output_path = "/home/leander/MIT_projects/meds-interp/user_table.parquet"
+user_table_output_path = "/home/leander/projects/meds-interp/user_table.parquet"
 
 
 def process_user():
@@ -330,7 +333,7 @@ def process_user():
         not os.path.exists(user_table_output_path)
         or pl.scan_parquet(user_table_output_path, n_rows=1).collect().is_empty()
     ):
-        with open("/mnt/hdd/shared/yelp_dataset/raw/yelp_academic_dataset_user.json") as r:
+        with open("/mnt/hdd/shared/shared/yelp_dataset/raw/yelp_academic_dataset_user.json") as r:
             user_id = []
             yelping_since = []
             review_count = []
@@ -403,13 +406,13 @@ def process_user():
 
 
 def aggregate_df():
-    # def mean_vector(series):
-    #     vectors = [vector for vector in series.to_list() if vector is not None]
-    #     if vectors:
-    #         mean_vec = np.mean(vectors, axis=0).tolist()
-    #         return mean_vec
-    #     else:
-    #         return []
+    def mean_vector(series):
+        vectors = [vector for vector in series.to_list() if vector is not None]
+        if vectors:
+            mean_vec = np.mean(vectors, axis=0).tolist()
+            return mean_vec
+        else:
+            return []
 
     # review_user_grouped = process_review().group_by("user_id", maintain_order=True).agg([
     #     pl.col("review_embeddings").map_elements(mean_vector, return_dtype=pl.List(pl.Float64)),
@@ -451,22 +454,41 @@ def aggregate_df():
     #     )
     # # print(photos_grouped)
     # print(photo_review_joined)
-    review_df = pl.scan_parquet(review_table_output_path)
-    review_df = review_df.head(100)
+    columns = ['user_id', 'timestamp', 'business_id', 'review_embeddings', 'useful', 'funny', \
+               'cool', 'stars', 'yelping_since', 'user_review_count', 'useful_sent', 'funny_sent', 'cool_sent', \
+                'fans', 'num_years_elite', 'average_stars', 'compliment_hot', 'compliment_more', 'compliment_profile', \
+                'compliment_cute', 'compliment_list', 'compliment_note', 'compliment_plain', 'compliment_cool', \
+                'compliment_funny', 'compliment_writer', 'compliment_photos', 'cap_embeddings_food', 'cap_embeddings_drink', \
+                'cap_embeddings_menu', 'cap_embeddings_inside', 'cap_embeddings_outside', 'img_embeddings_menu', \
+                'img_embeddings_food', 'img_embeddings_outside', 'img_embeddings_inside', 'img_embeddings_drink', \
+                'attribute_embeddings', 'category_embeddings', 'stars_right', 'bus_review_count']
+    special_columns = ['cap_embeddings_food', 'cap_embeddings_drink', 'cap_embeddings_menu', 'cap_embeddings_inside', \
+                'cap_embeddings_outside', 'img_embeddings_menu', 'img_embeddings_food', 'img_embeddings_outside', \
+                'img_embeddings_inside', 'img_embeddings_drink']
+    
+    review_df = pl.scan_parquet(reviews_table_output_path)
+    review_df = review_df.head(10)
     user_df = pl.scan_parquet(user_table_output_path)
     captions_df = pl.scan_parquet(caption_table_output_path)
     photos_df = pl.scan_parquet(photo_table_output_path)
     business_df = pl.scan_parquet(business_table_output_path)
-    large_df = review_df.join(user_df, on="user_id", how="left", coalesce=True)
-    large_df = large_df.join(captions_df, on="business_id", how="left", coalesce=True)
-    large_df = large_df.join(photos_df, on="business_id", how="left", coalesce=True)
-    large_df = large_df.join(business_df, on="business_id", how="left", coalesce=True)
-    large_df.sink_parquet("/home/leander/MIT_projects/meds-interp/large_table.parquet")
+    large_df = review_df.join(user_df, on="user_id", how="left")#, coalesce=True)
+    large_df = large_df.join(captions_df, on="business_id", how="left")#, coalesce=True)
+    large_df = large_df.join(photos_df, on="business_id", how="left")#, coalesce=True)
+    large_df = large_df.join(business_df, on="business_id", how="left")#, coalesce=True)
+    large_df = large_df.group_by("review_id", maintain_order=True).agg([
+        pl.col(col).first() if col not in special_columns \
+        else pl.col(col).map_elements(mean_vector, return_dtype=pl.List(pl.Float64))
+        for col in columns
+    ])
+    import pdb; pdb.set_trace()
+    large_df.collect().write_parquet("/home/leander/projects/meds-interp/big_table.parquet")
+
 
 
 if __name__ == "__main__":
-    process_photo_captions()
-    process_review()
-    process_business()
-    process_user()
+    # process_photo_captions()
+    # process_review()
+    # process_business()
+    # process_user()
     aggregate_df()
