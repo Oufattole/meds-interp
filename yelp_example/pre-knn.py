@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
 from transformers import CLIPModel, CLIPProcessor
 from loguru import logger
-from meds_interp.long_df import generate_long_df
+from meds_interp.long_df import generate_long_df_explode
 
 model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
 processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
@@ -30,10 +30,12 @@ caption_table_output_path = "/home/shared/yelp/caption_table.parquet"
 
 
 def process_photo_captions():
-    if (
-        not os.path.exists(photo_table_output_path)
-        or pl.scan_parquet(photo_table_output_path, n_rows=1).collect().is_empty()
-    ):
+    photo_caption_labels = ["drink", "food", "inside", "menu", "outside"]
+    statement = True
+    for label in photo_caption_labels:
+        statement and os.path.exists(f"/home/shared/yelp/caption_table_{label}.parquet") and \
+            os.path.exists(f"/home/shared/yelp/photo_table_{label}.parquet")
+    if statement:
         with open("/mnt/hdd/shared/shared/yelp_dataset_image/photos.json") as r:
             photo_ids = []
             photo_business_ids = []
@@ -76,7 +78,8 @@ def process_photo_captions():
                 image_tensor = image_processor(image, return_tensors="pt")
                 return image_tensor
 
-        photo_output_path = "/home/shared/yelp/photos.npy"
+        # photo_output_path = "/home/shared/yelp/photos.npy"
+        photo_output_path = "/home/leander/projects/meds-interp/photos.npy"
         if not os.path.exists(photo_output_path):
             photo_ids_list = photo_ids
             photo_dataloader = DataLoader(
@@ -101,14 +104,20 @@ def process_photo_captions():
 
         unique_photo_labels = photo_table["labels"].unique().to_list()
         for label in unique_photo_labels:
-            photo_table = photo_table.with_columns(
-                pl.when(pl.col("labels") == label)
-                .then(pl.col("image_embeddings"))
-                .otherwise(None)
-                .alias(f"img_embeddings_{label}")
-            )
-        photo_table = photo_table.drop(["image_embeddings", "labels"])
-        photo_table.write_parquet(photo_table_output_path)
+            new_table = photo_table.filter(pl.col("labels") == label)
+            new_table = new_table.rename({"image_embeddings" : f"image_embeddings_{label}"})
+            new_table = new_table.drop(["labels"])
+
+            new_table.write_parquet(f"/home/shared/yelp/photo_table_{label}.parquet")
+            # photo_table = photo_table.with_columns(
+            #     pl.when(pl.col("labels") == label)
+            #     .then(pl.col("image_embeddings"))
+            #     .otherwise([])
+            #     .alias(f"img_embeddings_{label}")
+            # )
+        # pdb.set_trace()
+        # photo_table = photo_table.drop(["image_embeddings", "labels"])
+        # photo_table.write_parquet(photo_table_output_path)
 
         class CaptionDataset(Dataset):
             def __init__(self, photo_captions_list: list[str]):
@@ -125,7 +134,8 @@ def process_photo_captions():
             def __getitem__(self, idx):
                 return self.photo_captions_list[idx]
 
-        caption_output_path = "/home/shared/yelp/captions.npy"
+        # caption_output_path = "/home/shared/yelp/captions.npy"
+        caption_output_path = "/home/leander/projects/meds-interp/captions.npy"
         if not os.path.exists(caption_output_path):
             captions_dataloader = DataLoader(CaptionDataset(captions), shuffle=False, batch_size=64)
             caption_all_embeddings = []
@@ -150,14 +160,19 @@ def process_photo_captions():
         photo_caption_table = pl.DataFrame(photo_caption_table)
         unique_caption_labels = photo_caption_table["labels"].unique().to_list()
         for label in unique_caption_labels:
-            photo_caption_table = photo_caption_table.with_columns(
-                pl.when(pl.col("labels") == label)
-                .then(pl.col("captions"))
-                .otherwise(None)
-                .alias(f"cap_embeddings_{label}")
-            )
-        photo_caption_table = photo_caption_table.drop(["captions", "labels"])
-        photo_caption_table.write_parquet(caption_table_output_path)
+            new_table = photo_caption_table.filter(pl.col("labels") == label)
+            new_table = new_table.rename({"captions" : f"captions_{label}"})
+            new_table = new_table.drop(["labels"])
+            
+            new_table.write_parquet(f"/home/shared/yelp/caption_table_{label}.parquet")
+        #     photo_caption_table = photo_caption_table.with_columns(
+        #         pl.when(pl.col("labels") == label)
+        #         .then(pl.col("captions"))
+        #         .otherwise(np.array([]))
+        #         .alias(f"cap_embeddings_{label}")
+        #     )
+        # photo_caption_table = photo_caption_table.drop(["captions", "labels"])
+        # photo_caption_table.write_parquet(caption_table_output_path)
 
 
 # Load all of the reviews into a dataframe
@@ -207,7 +222,8 @@ def process_review():
             def __getitem__(self, idx):
                 return self.reviews_list[idx]
 
-        review_output_path = "/home/shared/yelp/reviews.npy"
+        # review_output_path = "/home/shared/yelp/reviews.npy"
+        review_output_path = "/home/leander/projects/meds-interp/reviews.npy"
         model.eval()
         if not os.path.exists(review_output_path):
             review_dataloader = DataLoader(ReviewDataset(review), shuffle=False, batch_size=1024)
@@ -229,11 +245,11 @@ def process_review():
             "user_id": review_user,
             "timestamp": np.array(timestamps, dtype="datetime64[ns]"),
             "business_id": review_business,
+            "stars": stars,
             "review_embeddings": np.load(review_output_path),
             "useful": useful_count,
             "funny": funny_count,
             "cool": cool_count,
-            "stars": stars,
         }
         reviews_table = pl.DataFrame(reviews_table)
         reviews_table.write_parquet(reviews_table_output_path)
@@ -249,7 +265,7 @@ def process_business():
     ):
         with open("/mnt/hdd/shared/shared/yelp_dataset/raw/yelp_academic_dataset_business.json") as r:
             business_id = []
-            stars = []
+            avg_stars = []
             review_count = []
             attributes = []
             categories = []
@@ -257,7 +273,7 @@ def process_business():
                 data = json.loads(line)
                 if isinstance(data["categories"], str):
                     business_id.append(data["business_id"])
-                    stars.append(data["stars"])
+                    avg_stars.append(data["stars"])
                     review_count.append(data["review_count"])
                     attributes.append(str(data["attributes"]))
                     categories.append(data["categories"])
@@ -279,7 +295,8 @@ def process_business():
             def __getitem__(self, idx):
                 return self.business_list[idx]
 
-        business_categories_output_path = "/home/shared/yelp/business_categories.npy"
+        # business_categories_output_path = "/home/shared/yelp/business_categories.npy"
+        business_categories_output_path = "/home/leander/projects/meds-interp/business_categories.npy"
         model.eval()
         if not os.path.exists(business_categories_output_path):
             business_cat_dataloader = DataLoader(BusinessDataset(categories), shuffle=False, batch_size=64)
@@ -296,7 +313,8 @@ def process_business():
             business_cat_stacked_embeddings = np.vstack(business_cat_all_embeddings)
             np.save(business_categories_output_path, business_cat_stacked_embeddings)
 
-        business_attributes_output_path = "/home/shared/yelp/business_attributes.npy"
+        # business_attributes_output_path = "/home/shared/yelp/business_attributes.npy"
+        business_attributes_output_path = "/home/leander/projects/meds-interp/business_attributes.npy"
         model.eval()
         if not os.path.exists(business_attributes_output_path):
             business_att_dataloader = DataLoader(BusinessDataset(attributes), shuffle=False, batch_size=64)
@@ -317,7 +335,7 @@ def process_business():
             "business_id": business_id,
             "attribute_embeddings": np.load(business_attributes_output_path),
             "category_embeddings": np.load(business_categories_output_path),
-            "stars": stars,
+            "avg_stars": avg_stars,
             "bus_review_count": review_count,
         }
         business_table = pl.DataFrame(business_table)
@@ -325,7 +343,6 @@ def process_business():
 
 
 user_table_output_path = "/home/shared/yelp/user_table.parquet"
-
 
 def process_user():
     if (
@@ -387,7 +404,7 @@ def process_user():
             "cool_sent": cool_sent,
             "fans": fans,
             "num_years_elite": elite,
-            "average_stars": average_stars,
+            "average_stars_given": average_stars,
             "compliment_hot": compliment_hot,
             "compliment_more": compliment_more,
             "compliment_profile": compliment_profile,
@@ -453,44 +470,75 @@ def aggregate_df():
     #     )
     # # print(photos_grouped)
     # print(photo_review_joined)
-    columns = ['user_id', 'timestamp', 'business_id', 'review_embeddings', 'useful', 'funny', \
-               'cool', 'stars', 'yelping_since', 'user_review_count', 'useful_sent', 'funny_sent', 'cool_sent', \
-                'fans', 'num_years_elite', 'average_stars', 'compliment_hot', 'compliment_more', 'compliment_profile', \
-                'compliment_cute', 'compliment_list', 'compliment_note', 'compliment_plain', 'compliment_cool', \
-                'compliment_funny', 'compliment_writer', 'compliment_photos', 'cap_embeddings_food', 'cap_embeddings_drink', \
-                'cap_embeddings_menu', 'cap_embeddings_inside', 'cap_embeddings_outside', 'img_embeddings_menu', \
-                'img_embeddings_food', 'img_embeddings_outside', 'img_embeddings_inside', 'img_embeddings_drink', \
-                'attribute_embeddings', 'category_embeddings', 'stars_right', 'bus_review_count']
-    special_columns = ['cap_embeddings_food', 'cap_embeddings_drink', 'cap_embeddings_menu', 'cap_embeddings_inside', \
-                'cap_embeddings_outside', 'img_embeddings_menu', 'img_embeddings_food', 'img_embeddings_outside', \
-                'img_embeddings_inside', 'img_embeddings_drink']
+
+
+    # dfs = [review_df, business_df, ...]
+    # idx_cols = [["review_id", "user_id", "business_id"], ["business_id"], ...]
+    # modalities = [["review_embedding"], ["photos", ...], ...]
+
+    # long_dfs = []
+    # for df, idx_col_list, modality_col_list in dfs, idx_cols, modalities:
+    #     long_df: pl.LazyFrame = generate_long_df_explode(df.select(pl.col(idx_col_list + [modality_col])), modality_col)
+    #     long_dfs.append(long_df)
+    
+    # long_dfs[0].columns == ["review_id", "user_id", "business_id", "code", "timestamp", "numerical_value"]
+    # long_dfs[1].columns == ["business_id", "code", "timestamp", "numerical_value"]
+    # -> group_by("business_id", "code", "embedding_index").mean()
+
+    # -> left join review_id -- problem is this explodes the size of the dataset
+
+    # long_dfs[0].columns == ["review_id", "user_id", "business_id", "code", "timestamp", "numerical_value"]
+    # long_dfs[1].columns == ["review_id", "business_id", "code", "timestamp", "numerical_value"]
+
+    # -> vstack
+    # pl.concat(long_dfs, how='vertical')
+
+
+    
+    # pl.concat(long_dfs)
     
     logger.info("Reading Reviews")
-    review_df = pl.read_parquet(reviews_table_output_path)
-    review_df = review_df.head(10)
+    review_df = pl.scan_parquet(reviews_table_output_path)
+    review_df = review_df.head(100)
     logger.info("Reading Users")
-    user_df = pl.read_parquet(user_table_output_path)
+    user_df = pl.scan_parquet(user_table_output_path).drop(["yelping_since"])
     logger.info("Reading Captions")
-    captions_df = pl.read_parquet(caption_table_output_path)
+    photo_caption_labels = ["drink", "food", "inside", "menu", "outside"]
+    caption_tables = []
+    for label in photo_caption_labels:
+        caption_tables.append(pl.scan_parquet(f"/home/shared/yelp/caption_table_{label}.parquet"))
+    logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
     logger.info("Reading Photos")
-    photos_df = pl.read_parquet(photo_table_output_path)
+    photo_tables = []
+    for label in photo_caption_labels:
+        photo_tables.append(pl.scan_parquet(f"/home/shared/yelp/photo_table_{label}.parquet"))
+    logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
     logger.info("Reading Business")
-    business_df = pl.read_parquet(business_table_output_path)
+    business_df = pl.scan_parquet(business_table_output_path)
+    logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
     logger.info("Merging users")
-    large_df = review_df.join(user_df, on="user_id", how="left")#, coalesce=True)
+    review_df = review_df.join(user_df, on="user_id", how="left")
+    logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
     logger.info("Merging captions")
-    large_df = large_df.join(captions_df, on="business_id", how="left")#, coalesce=True)
+    for table in caption_tables:
+        import pdb; pdb.set_trace()
+        review_df = review_df.join(table, on="business_id", how="left")
+        logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
     logger.info("Merging photos")
-    large_df = large_df.join(photos_df, on="business_id", how="left")#, coalesce=True)
+    for table in photo_tables:
+        review_df = review_df.join(table, on="business_id", how="left")
+    logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
     logger.info("Merging business")
-    large_df = large_df.join(business_df, on="business_id", how="left")#, coalesce=True)
+    review_df = review_df.join(business_df, on="business_id", how="left")
+    logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
     logger.info("Aggregating")
-    import pdb; pdb.set_trace()
     # TODO Fix this aggregation
-    long_df = generate_long_df(large_df, id_column="review_id", timestamp_column="timestamp")
-    long_df = long_df.group_by("review_id", "code").mean()
+    # import pdb; pdb.set_trace()
+    long_df = generate_long_df_explode(review_df, id_column="review_id", timestamp_column="timestamp")
+    # long_df = long_df.group_by("review_id", "code").mean()
     logger.info("writing")
-    long_df.write_parquet("/home/shared/yelp/big_table.parquet")
+    # long_df.sink_parquet("/home/shared/yelp/big_table.parquet")
+    long_df.sink_parquet("/home/shared/yelp/big_table.parquet")
 
 
 # large_df.select([pl.arange(0, pl.col("category_embeddings").arr.rank().list.len())])
