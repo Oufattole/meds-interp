@@ -470,33 +470,6 @@ def aggregate_df():
     #     )
     # # print(photos_grouped)
     # print(photo_review_joined)
-
-
-    # dfs = [review_df, business_df, ...]
-    # idx_cols = [["review_id", "user_id", "business_id"], ["business_id"], ...]
-    # modalities = [["review_embedding"], ["photos", ...], ...]
-
-    # long_dfs = []
-    # for df, idx_col_list, modality_col_list in dfs, idx_cols, modalities:
-    #     long_df: pl.LazyFrame = generate_long_df_explode(df.select(pl.col(idx_col_list + [modality_col])), modality_col)
-    #     long_dfs.append(long_df)
-    
-    # long_dfs[0].columns == ["review_id", "user_id", "business_id", "code", "timestamp", "numerical_value"]
-    # long_dfs[1].columns == ["business_id", "code", "timestamp", "numerical_value"]
-    # -> group_by("business_id", "code", "embedding_index").mean()
-
-    # -> left join review_id -- problem is this explodes the size of the dataset
-
-    # long_dfs[0].columns == ["review_id", "user_id", "business_id", "code", "timestamp", "numerical_value"]
-    # long_dfs[1].columns == ["review_id", "business_id", "code", "timestamp", "numerical_value"]
-
-    # -> vstack
-    # pl.concat(long_dfs, how='vertical')
-
-
-    
-    # pl.concat(long_dfs)
-    
     logger.info("Reading Reviews")
     review_df = pl.scan_parquet(reviews_table_output_path)
     review_df = review_df.head(100)
@@ -515,30 +488,87 @@ def aggregate_df():
     logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
     logger.info("Reading Business")
     business_df = pl.scan_parquet(business_table_output_path)
-    logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
-    logger.info("Merging users")
-    review_df = review_df.join(user_df, on="user_id", how="left")
-    logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
-    logger.info("Merging captions")
-    for table in caption_tables:
-        import pdb; pdb.set_trace()
-        review_df = review_df.join(table, on="business_id", how="left")
-        logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
-    logger.info("Merging photos")
-    for table in photo_tables:
-        review_df = review_df.join(table, on="business_id", how="left")
-    logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
-    logger.info("Merging business")
-    review_df = review_df.join(business_df, on="business_id", how="left")
-    logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
-    logger.info("Aggregating")
-    # TODO Fix this aggregation
-    # import pdb; pdb.set_trace()
-    long_df = generate_long_df_explode(review_df, id_column="review_id", timestamp_column="timestamp")
-    # long_df = long_df.group_by("review_id", "code").mean()
-    logger.info("writing")
+
+
+    dataframes = [review_df, business_df, user_df, photo_tables, caption_tables]
+    idx_cols = [["review_id", "user_id", "business_id", "timestamp", "stars"], ["business_id"], ["user_id"], ["business_id"], ["business_id"]]
+    # modalities = [["review_embedding"], ["photos", ...], ...]
+
+    long_dfs = []
+    for dfs, idx_col_list in zip(dataframes, idx_cols):
+        if isinstance(dfs, list):
+            for df in dfs:
+                long_df: pl.LazyFrame = generate_long_df_explode(df, id_column=idx_col_list[0], timestamp_column=None, num_idx_cols=1)
+        else:
+            if "timestamp" in dfs.columns:
+                timestamp_column = "timestamp"
+            else:
+                timestamp_column = None
+            num_idx_cols = len(idx_col_list)
+            if len(idx_col_list) > 1:
+                more_ids = True
+            long_df: pl.LazyFrame = generate_long_df_explode(dfs, id_column=idx_col_list[0], timestamp_column=timestamp_column, num_idx_cols=num_idx_cols, more_ids=more_ids)
+        long_dfs.append(long_df)
+        # import pdb; pdb.set_trace()
+    
+    big_df = long_dfs[0]
+    for i in range(1, len(long_dfs)):
+        if i == 2:
+            other = long_dfs[0].join(long_dfs[i], on="user_id", how="left")
+        else:
+            other = long_dfs[0].join(long_dfs[i], on="business_id", how="left")
+        new_df = other.select([
+                'review_id', 
+                'user_id', 
+                'business_id', 
+                'timestamp', 
+                pl.col('code_right').alias('code'), 
+                pl.col('index_right').alias('index'), 
+                pl.col('numerical_value_right').alias('numerical_value')
+                ])
+        big_df = pl.concat([big_df, new_df], how='vertical')
+    big_df = big_df.group_by(["review_id", "user_id", "business_id", "timestamp", "code", "index"]).mean()
+    import pdb; pdb.set_trace()
+    # long_dfs[0].columns == ["review_id", "user_id", "business_id", "code", "timestamp", "numerical_value"]
+    # long_dfs[1].columns == ["business_id", "code", "timestamp", "numerical_value"]
+    # -> group_by("business_id", "code", "embedding_index").mean()
+
+    # -> left join review_id -- problem is this explodes the size of the dataset
+
+    # long_dfs[0].columns == ["review_id", "user_id", "business_id", "code", "timestamp", "numerical_value"]
+    # long_dfs[1].columns == ["review_id", "business_id", "code", "timestamp", "numerical_value"]
+
+    # -> vstack
+    # pl.concat(long_dfs, how='vertical')
+
+
+    
+    # pl.concat(long_dfs)
+    
+    # logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
+    # logger.info("Merging users")
+    # review_df = review_df.join(user_df, on="user_id", how="left")
+    # logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
+    # logger.info("Merging captions")
+    # for table in caption_tables:
+    #     import pdb; pdb.set_trace()
+    #     review_df = review_df.join(table, on="business_id", how="left")
+    #     logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
+    # logger.info("Merging photos")
+    # for table in photo_tables:
+    #     review_df = review_df.join(table, on="business_id", how="left")
+    # logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
+    # logger.info("Merging business")
+    # review_df = review_df.join(business_df, on="business_id", how="left")
+    # logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
+    # logger.info("Aggregating")
+    # # TODO Fix this aggregation
+    # # import pdb; pdb.set_trace()
+    # long_df = generate_long_df_explode(review_df, id_column="review_id", timestamp_column="timestamp")
+    # # long_df = long_df.group_by("review_id", "code").mean()
+    # logger.info("writing")
+    # # long_df.sink_parquet("/home/shared/yelp/big_table.parquet")
     # long_df.sink_parquet("/home/shared/yelp/big_table.parquet")
-    long_df.sink_parquet("/home/shared/yelp/big_table.parquet")
 
 
 # large_df.select([pl.arange(0, pl.col("category_embeddings").arr.rank().list.len())])
