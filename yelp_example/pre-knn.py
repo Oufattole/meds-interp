@@ -9,13 +9,12 @@ from tqdm.auto import tqdm
 from transformers import CLIPModel, CLIPProcessor
 from loguru import logger
 from meds_interp.long_df import generate_long_df_explode
+from pathlib import Path
 
 model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
 processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 tokenizer = processor.tokenizer
 image_processor = processor.image_processor
-
-os.environ["POLARS_MAX_THREADS"] = "1"
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 assert device == "cuda"
@@ -492,50 +491,67 @@ def aggregate_df():
     business_df = pl.scan_parquet(business_table_output_path)
 
 
-    dataframes = [review_df, business_df, user_df, photo_tables, caption_tables]
-    idx_cols = [["review_id", "user_id", "business_id", "timestamp", "stars"], ["business_id"], ["user_id"], ["business_id"], ["business_id"]]
+    business_list = caption_tables + photo_tables + [business_df]
+    dataframes = [review_df, user_df, business_list]
+    names = ["review", "user", "business"]
+    idx_cols = [["review_id", "user_id", "business_id", "timestamp", "stars"], ["user_id"], ["business_id"]]
     # modalities = [["review_embedding"], ["photos", ...], ...]
 
     logger.info("Exploding dfs")
-    long_dfs = []
-    for dfs, idx_col_list in zip(dataframes, idx_cols):
-        if isinstance(dfs, list):
-            for df in dfs:
-                long_df: pl.LazyFrame = generate_long_df_explode(df, id_column=idx_col_list[0], timestamp_column=None, num_idx_cols=1)
-        else:
-            if "timestamp" in dfs.collect_schema().names():
-                timestamp_column = "timestamp"
+    output_dfs = []
+    for dfs, idx_col_list, name in zip(dataframes, idx_cols, names):
+        output_path = Path(f"/home/shared/yelp/long_{name}_df.parquet")
+        if not output_path.exists():
+            logger.info(f"Exploding {name} df")
+            if isinstance(dfs, list):
+                long_dfs = []
+                for df in dfs:
+                    long_df: pl.LazyFrame = generate_long_df_explode(df, id_column=idx_col_list[0], timestamp_column=None, num_idx_cols=1)
+                    long_dfs.append(long_df)
+                pl.concat(long_dfs, how="vertical").sink_parquet(output_path)
+                
             else:
-                timestamp_column = None
-            num_idx_cols = len(idx_col_list)
-            if len(idx_col_list) > 1:
-                more_ids = True
-            long_df: pl.LazyFrame = generate_long_df_explode(dfs, id_column=idx_col_list[0], timestamp_column=timestamp_column, num_idx_cols=num_idx_cols, more_ids=more_ids)
-        long_dfs.append(long_df)
-        # import pdb; pdb.set_trace()
+                if "timestamp" in dfs.collect_schema().names():
+                    timestamp_column = "timestamp"
+                else:
+                    timestamp_column = None
+                num_idx_cols = len(idx_col_list)
+                if len(idx_col_list) > 1:
+                    more_ids = True
+                long_df: pl.LazyFrame = generate_long_df_explode(dfs, id_column=idx_col_list[0], timestamp_column=timestamp_column, num_idx_cols=num_idx_cols, more_ids=more_ids)
+                long_df.sink_parquet(output_path)
+        assert output_path.exists()
+        logger.info(f"Loading {output_path} df")
+        output_dfs.append(pl.scan_parquet(output_path))
+        
+            
     
-    logger.info("Joining dfs")
-    big_df = long_dfs[0]
-    for i in range(1, len(long_dfs)):
-        if "user_id" in idx_cols[i]:
-            other = long_dfs[0].join(long_dfs[i], on="user_id", how="left")
-        else:
-            other = long_dfs[0].join(long_dfs[i], on="business_id", how="left")
-        new_df = other.select([
-                'review_id', 
-                'user_id', 
-                'business_id', 
-                'timestamp', 
-                pl.col('code_right').alias('code'), 
-                pl.col('index_right').alias('index'), 
-                pl.col('numerical_value_right').alias('numerical_value')
-                ])
-        big_df = pl.concat([big_df, new_df], how='vertical')
-    logger.info("Grouping dfs")
-    big_df = big_df.group_by(["review_id", "user_id", "business_id", "timestamp", "code", "index"]).mean()
-    logger.info("Sinking/collecting dfs")
-    assert isinstance(big_df, pl.LazyFrame)
-    big_df.sink_parquet("/home/shared/yelp/big_table.parquet")
+    # logger.info("Joining dfs")    
+    # big_df = long_dfs[0]
+    # import pdb; pdb.set_trace()
+    # for i in range(1, len(long_dfs)):
+    #     if "user_id" in idx_cols[i]:
+    #         other = long_dfs[i].join(review_df.select(["review_id", "user_id"]), on="user_id", how="left")
+    #     else:
+    #         other = review_df.join(long_dfs[i], on="business_id", how="left")
+    #     new_df = other.select([
+    #             'review_id', 
+    #             'user_id', 
+    #             'business_id', 
+    #             'timestamp', 
+    #             pl.col('code_right').alias('code'), 
+    #             pl.col('index_right').alias('index'), 
+    #             pl.col('numerical_value_right').alias('numerical_value')
+    #             ])
+    #     big_df = pl.concat([big_df, new_df], how='vertical')
+    # logger.info("Grouping dfs")
+    # big_df = big_df.group_by(["review_id", "user_id", "business_id", "timestamp", "code", "index"]).mean()
+    # logger.info("Sinking/collecting dfs")
+    # assert isinstance(big_df, pl.LazyFrame)
+    # big_df.sink_parquet("/home/shared/yelp/big_table.parquet")
+    
+    
+    
     # big_df.sink_parquet("/home/shared/yelp/big_table.parquet")
     # import pdb; pdb.set_trace()
     # long_dfs[0].columns == ["review_id", "user_id", "business_id", "code", "timestamp", "numerical_value"]
