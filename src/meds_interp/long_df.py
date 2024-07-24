@@ -68,27 +68,31 @@ def generate_long_df_explode(df: pl.DataFrame, id_column="patient_id", timestamp
     # df.shape[0]
     if more_ids:
         ids_list = []
-        for col in df.columns:
+        for col in df.collect_schema().names():
             if "id" in col:
                 ids_list.append(col)
-    
+    # import pdb
     for embedding, embedding_type in zip(embeddings, embedding_types):
         exploded = df.select(list(df.collect_schema().names())[:num_idx_cols] + [embedding])
         exploded = exploded.drop_nulls()
+        # pdb.set_trace()
         if isinstance(embedding_type, pl.Array):
-            # import pdb; pdb.set_trace()
             length = list(exploded.select(embedding).collect_schema().dtypes())[0].shape[0]
+            index_array = np.array([np.arange(length)] * height)
+            exploded = exploded.collect()
             exploded = exploded.with_columns(
-                pl.Series([np.arange(length)] * height).alias("index")
+                pl.Series(index_array).alias("index"),
+                pl.Series([embedding] * (height)).alias("code"),
             )
             # pdb.set_trace()
+            exploded = exploded.lazy()
             exploded = exploded.explode([embedding, "index"])
+            # pdb.set_trace()
+            # exploded = exploded.with_columns(exploded.with_columns(pl.lit(embedding).alias("code")))
             # exploded = exploded.with_columns(
-            #     exploded.with_columns(pl.lit(embedding).alias("code")),
+            #     # pl.lit(embedding).alias("code"),
+            #     pl.Series([embedding] * (height * length)).alias("code"),
             # )
-            exploded = exploded.with_columns(
-                pl.lit(embedding).alias("code"),
-            )
             exploded = exploded.rename({embedding: "numerical_value"})
             # pdb.set_trace()
             if timestamp_bool:
@@ -113,10 +117,13 @@ def generate_long_df_explode(df: pl.DataFrame, id_column="patient_id", timestamp
             # exploded = exploded.with_columns(
             #     exploded.with_columns(pl.lit(embedding).alias("code")),
             # )
+            exploded = exploded.collect()
             exploded = exploded.with_columns(
-                pl.lit(embedding).alias("code"),
+                # pl.lit(embedding).alias("code"),
+                pl.Series([embedding] * height).alias("code"),
                 pl.Series(np.zeros(height, dtype=np.int64)).alias("index")
             )
+            exploded = exploded.lazy()
             exploded = exploded.rename({embedding: "numerical_value"})
             # exploded = exploded.select([id_column, timestamp_column, "code", "index", "numerical_value"])
             # exploded = exploded.drop_nulls()
@@ -140,7 +147,7 @@ def generate_long_df_explode(df: pl.DataFrame, id_column="patient_id", timestamp
             long_df = pl.LazyFrame(empty_data)
             first_pass = False
         long_df = pl.concat([long_df, exploded], how="vertical")
-        # pdb.set_trace()
+        # import pdb; pdb.set_trace()
 
     return long_df
 
@@ -163,6 +170,7 @@ if __name__ == "__main__":
             [0.7, 0.4, 0.1],
         ]),
         "Embedding_2": np.array([[0.5, 0.6], [0.7, 0.8], [0.1, 0.4], [0.3, 0.2], [0.4, 0.3], [0.1, 0.3], [0.4, 0.1]]),
+        # "Embedding_3": np.array([1, 2, 3, 4, 5, 6, 7]),
     }
     data_2 = {
         "patient_id": [1, 1, 2],
@@ -175,4 +183,5 @@ if __name__ == "__main__":
     df = pl.LazyFrame(data_1)
     print(df.collect())
     long_df = generate_long_df_explode(df, timestamp_column=None, num_idx_cols=4)
+    long_df.sink_parquet("/home/leander/projects/meds-interp/src/meds_interp/test.parquet")
     print(long_df.collect())

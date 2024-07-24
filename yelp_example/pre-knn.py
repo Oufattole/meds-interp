@@ -15,6 +15,8 @@ processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 tokenizer = processor.tokenizer
 image_processor = processor.image_processor
 
+os.environ["POLARS_MAX_THREADS"] = "1"
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 assert device == "cuda"
 model.to(device)
@@ -494,6 +496,7 @@ def aggregate_df():
     idx_cols = [["review_id", "user_id", "business_id", "timestamp", "stars"], ["business_id"], ["user_id"], ["business_id"], ["business_id"]]
     # modalities = [["review_embedding"], ["photos", ...], ...]
 
+    logger.info("Exploding dfs")
     long_dfs = []
     for dfs, idx_col_list in zip(dataframes, idx_cols):
         if isinstance(dfs, list):
@@ -511,10 +514,10 @@ def aggregate_df():
         long_dfs.append(long_df)
         # import pdb; pdb.set_trace()
     
-    
+    logger.info("Joining dfs")
     big_df = long_dfs[0]
     for i in range(1, len(long_dfs)):
-        if i == 2:
+        if "user_id" in idx_cols[i]:
             other = long_dfs[0].join(long_dfs[i], on="user_id", how="left")
         else:
             other = long_dfs[0].join(long_dfs[i], on="business_id", how="left")
@@ -528,8 +531,12 @@ def aggregate_df():
                 pl.col('numerical_value_right').alias('numerical_value')
                 ])
         big_df = pl.concat([big_df, new_df], how='vertical')
+    logger.info("Grouping dfs")
     big_df = big_df.group_by(["review_id", "user_id", "business_id", "timestamp", "code", "index"]).mean()
-    big_df.collect(streaming=True).write_parquet("/home/shared/yelp/big_table.parquet")
+    logger.info("Sinking/collecting dfs")
+    assert isinstance(big_df, pl.LazyFrame)
+    big_df.sink_parquet("/home/shared/yelp/big_table.parquet")
+    # big_df.sink_parquet("/home/shared/yelp/big_table.parquet")
     # import pdb; pdb.set_trace()
     # long_dfs[0].columns == ["review_id", "user_id", "business_id", "code", "timestamp", "numerical_value"]
     # long_dfs[1].columns == ["business_id", "code", "timestamp", "numerical_value"]
