@@ -472,7 +472,7 @@ def aggregate_df():
     # print(photo_review_joined)
     logger.info("Reading Reviews")
     review_df = pl.scan_parquet(reviews_table_output_path)
-    review_df = review_df.head(100)
+    # review_df = review_df.head(100)
     logger.info("Reading Users")
     user_df = pl.scan_parquet(user_table_output_path).drop(["yelping_since"])
     logger.info("Reading Captions")
@@ -500,7 +500,7 @@ def aggregate_df():
             for df in dfs:
                 long_df: pl.LazyFrame = generate_long_df_explode(df, id_column=idx_col_list[0], timestamp_column=None, num_idx_cols=1)
         else:
-            if "timestamp" in dfs.columns:
+            if "timestamp" in dfs.collect_schema().names():
                 timestamp_column = "timestamp"
             else:
                 timestamp_column = None
@@ -510,6 +510,7 @@ def aggregate_df():
             long_df: pl.LazyFrame = generate_long_df_explode(dfs, id_column=idx_col_list[0], timestamp_column=timestamp_column, num_idx_cols=num_idx_cols, more_ids=more_ids)
         long_dfs.append(long_df)
         # import pdb; pdb.set_trace()
+    
     
     big_df = long_dfs[0]
     for i in range(1, len(long_dfs)):
@@ -528,7 +529,8 @@ def aggregate_df():
                 ])
         big_df = pl.concat([big_df, new_df], how='vertical')
     big_df = big_df.group_by(["review_id", "user_id", "business_id", "timestamp", "code", "index"]).mean()
-    import pdb; pdb.set_trace()
+    big_df.collect(streaming=True).write_parquet("/home/shared/yelp/big_table.parquet")
+    # import pdb; pdb.set_trace()
     # long_dfs[0].columns == ["review_id", "user_id", "business_id", "code", "timestamp", "numerical_value"]
     # long_dfs[1].columns == ["business_id", "code", "timestamp", "numerical_value"]
     # -> group_by("business_id", "code", "embedding_index").mean()
