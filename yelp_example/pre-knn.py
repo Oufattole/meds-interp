@@ -526,8 +526,10 @@ def aggregate_df():
         
             
     
-    # logger.info("Joining dfs")    
-    # big_df = long_dfs[0]
+    logger.info("Joining dfs")  
+    reveiw_df, user_df, business_df = output_dfs
+    import pdb; pdb.set_trace()
+    big_df = long_dfs[0]
     # import pdb; pdb.set_trace()
     # for i in range(1, len(long_dfs)):
     #     if "user_id" in idx_cols[i]:
