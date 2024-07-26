@@ -136,7 +136,6 @@ class KNN_Model(BaseEstimator, ClassifierMixin):
         embeddings = []
         if isinstance(X, pl.DataFrame):
             for modality in self.modalities:
-                # embed_array = np.asarray(X[modality].to_list())
                 column_data = X[modality]
                 if isinstance(column_data.dtype, pl.List):
                     embed_array = np.asarray(column_data.to_list())
