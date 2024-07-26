@@ -136,7 +136,12 @@ class KNN_Model(BaseEstimator, ClassifierMixin):
         embeddings = []
         if isinstance(X, pl.DataFrame):
             for modality in self.modalities:
-                embed_array = np.asarray(X[modality].to_list())
+                # embed_array = np.asarray(X[modality].to_list())
+                column_data = X[modality]
+                if isinstance(column_data.dtype, pl.List):
+                    embed_array = np.asarray(column_data.to_list())
+                else:
+                    embed_array = np.expand_dims(np.asarray(column_data.to_list()), axis=1)
                 embeddings.append(embed_array)
         else:
             embeddings = X
@@ -162,7 +167,10 @@ class KNN_Model(BaseEstimator, ClassifierMixin):
     def get_modality_lengths(self, X: pl.DataFrame):
         modality_lengths = []
         for modality in self.modalities:
-            modality_lengths.append(X.get_column(modality)[0].len())
+            if isinstance(X.get_column(modality)[0], (int, float)):
+                modality_lengths.append(1)
+            else:
+                modality_lengths.append(X.get_column(modality)[0].len())
         self.modality_lengths = modality_lengths
 
     def transform_preprocess(self, X: pl.DataFrame):

@@ -37,8 +37,8 @@ def score_labels(test_df: pl.DataFrame):
     """
     true_labels = test_df["label"]
 
-    predicted_labels = test_df.get_column("probabilities").list.arg_max()
-    predicted_probs = test_df.get_column("probabilities").list.get(0)
+    predicted_labels = test_df.get_column("probabilities").map_elements(np.argmax, return_dtype=pl.Int64)
+    predicted_probs = test_df.get_column("probabilities").arr.first()
 
     accuracy = metrics.accuracy_score(true_labels, predicted_labels)
     auc_score = metrics.roc_auc_score(true_labels, predicted_probs)

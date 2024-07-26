@@ -11,7 +11,7 @@ def test_lr():
     train_df = pl.DataFrame({"embeddings": [[1, 1, 0], [1, 2, 1], [2, 0, -2]], "label": [0, 1, 0]})
     test_df = pl.DataFrame({"embeddings": [[1, 2, 1], [1, 0, 0], [1, 0, 1]], "label": [1, 0, 1]})
     probabilities = lr.fit_logistic_regression(train_df, test_df, 1.0)
-    test_df = test_df.with_columns(pl.Series("probabilities", probabilities))
+    test_df = test_df.with_columns(pl.Series(probabilities).alias("probabilities"))
     lr.score_labels(test_df)
 
 
@@ -50,6 +50,7 @@ def test_knn_tuning(tmp_path):
         {
             "modality_1": [[1, 1, 0], [1, 2, 1], [2, 0, -2], [0, 1, 2]],
             "modality_2": [[1, 0, 0], [0, 2, 1], [4, 1, 1], [3, 1, 2]],
+            "modality_3": [1, 2, 3, 4],
             "label": [0, 0, 1, 1],
         }
     )
@@ -57,6 +58,7 @@ def test_knn_tuning(tmp_path):
         {
             "modality_1": [[3, 5, 2], [4, 1, 3], [6, 2, 0], [7, 1, 1]],
             "modality_2": [[2, 3, 1], [5, 0, 4], [1, 6, 2], [3, 2, 5]],
+            "modality_3": [2, 6, 1, 1],
             "label": [0, 1, 0, 1],
         }
     )
@@ -64,6 +66,7 @@ def test_knn_tuning(tmp_path):
         {
             "modality_1": [[-2, 3, -1], [0, -1, 2], [-3, 1, -2], [1, -2, 3]],
             "modality_2": [[3, -1, 0], [-2, 2, -3], [1, -3, 2], [0, 3, -1]],
+            "modality_3": [1, 4, 2, 6],
             "label": [0, 0, 1, 1],
         }
     )
@@ -74,9 +77,10 @@ def test_knn_tuning(tmp_path):
     # import pdb; pdb.set_trace()
 
     test_config = {
-        "modalities": ["modality_1", "modality_2"],
+        "modalities": ["modality_1", "modality_2", "modality_3"],
         "+weights.modality_1": 1,
         "+weights.modality_2": 1,
+        "+weights.modality_3": 1,
         "input_path": tmp_path,
     }
 

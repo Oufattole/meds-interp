@@ -34,8 +34,8 @@ caption_table_output_path = "/home/shared/yelp/caption_table.parquet"
 
 
 def hash_id(uid):
-    byte_string = uid.encode()
-    return int.from_bytes(hashlib.sha256(byte_string).digest()[:4], "little")
+    hash_object = hashlib.md5(uid.encode())
+    return int.from_bytes(hash_object.digest()[:4], 'little')
 
 
 def process_photo_captions():
@@ -106,7 +106,8 @@ def process_photo_captions():
 
     # Dataframe of the image embeddings and the labels
     photo_table = {
-        "business_id": [hash(bus_id) for bus_id in photo_business_ids],
+        # "business_id": [hash_id(bus_id) for bus_id in photo_business_ids],
+        "business_id": photo_business_ids,
         "image_embeddings": np.load(photo_output_path),
         "labels": photo_labels,
     }
@@ -163,7 +164,8 @@ def process_photo_captions():
 
     # Dataframe of the caption embeddings and the labels
     photo_caption_table = {
-        "business_id": [hash(bus_id) for bus_id in caption_business_ids],
+        # "business_id": [hash_id(bus_id) for bus_id in caption_business_ids],
+        "business_id": caption_business_ids,
         "captions": np.load(caption_output_path),
         "labels": caption_labels,
     }
@@ -252,11 +254,12 @@ def process_review():
 
     reviews_table = {
         # "review_id": [hash_id(rev_id) for rev_id in review_id],
-        # "review_id": review_id,
-        "review_id": [hash(rev_id) for rev_id in review_id],
-        "user_id": [hash(use_id) for use_id in review_user],
+        "review_id": review_id,
+        # "user_id": [hash_id(use_id) for use_id in review_user],
+        "user_id": review_user,
         "timestamp": np.array(timestamps, dtype="datetime64[ns]"),
-        "business_id": [hash(bus_id) for bus_id in review_business],
+        # "business_id": [hash_id(bus_id) for bus_id in review_business],
+        "business_id": review_business,
         "stars": stars,
         "review_embeddings": np.load(review_output_path),
         "useful": useful_count,
@@ -264,6 +267,7 @@ def process_review():
         "cool": cool_count,
     }
     reviews_table = pl.DataFrame(reviews_table)
+    import pdb; pdb.set_trace()
     reviews_table.write_parquet(reviews_table_output_path)
 
 
@@ -344,7 +348,8 @@ def process_business():
         np.save(business_attributes_output_path, business_att_stacked_embeddings)
 
     business_table = {
-        "business_id": [hash(bus_id) for bus_id in business_id],
+        # "business_id": [hash_id(bus_id) for bus_id in business_id],
+        "business_id": business_id,
         "attribute_embeddings": np.load(business_attributes_output_path),
         "category_embeddings": np.load(business_categories_output_path),
         "avg_stars": avg_stars,
@@ -409,7 +414,8 @@ def process_user():
             compliment_photos.append(data["compliment_photos"])
 
     user_table = {
-        "user_id": [hash(use_id) for use_id in user_id],
+        # "user_id": [hash_id(use_id) for use_id in user_id],
+        "user_id": user_id,
         "yelping_since": np.array(yelping_since, dtype="datetime64[ns]"),
         "user_review_count": review_count,
         "useful_sent": useful_sent,
@@ -436,12 +442,17 @@ def process_user():
 
 def aggregate_df():
     def mean_vector(series):
-        vectors = [vector for vector in series.to_list() if vector is not None]
+        vectors = [vector for vector in series if vector is not None and len(vector) > 5]
         if vectors:
             mean_vec = np.mean(vectors, axis=0).tolist()
             return mean_vec
         else:
             return []
+    
+    def mean_vectors(list_of_lists):
+        for vector in list_of_lists:
+            continue
+
 
     # review_user_grouped = process_review().group_by("user_id", maintain_order=True).agg([
     #     pl.col("review_embeddings").map_elements(mean_vector, return_dtype=pl.List(pl.Float64)),
@@ -485,7 +496,7 @@ def aggregate_df():
     # print(photo_review_joined)
     logger.info("Reading Reviews")
     review_df = pl.scan_parquet(reviews_table_output_path)
-    # import pdb; pdb.set_trace()
+    import pdb; pdb.set_trace()
     # review_df = review_df.head(100)
     logger.info("Reading Users")
     user_df = pl.scan_parquet(user_table_output_path).drop(["yelping_since"])
@@ -505,14 +516,18 @@ def aggregate_df():
     # logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
     logger.info("Reading Business")
     business_df = pl.scan_parquet(business_table_output_path)
+    # import pdb; pdb.set_trace()
     business_df = business_df.join(caption_df, on="business_id", how="left")
     business_df = business_df.join(photo_df, on="business_id", how="left")
-
+    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     aggregations = []
-    for col in business_df.columns[1:]:
+    for col in business_df.collect_schema().names()[1:]:
         if "embeddings" in col:
             aggregations.append(
-                pl.col(col).map_elements(lambda s: mean_vector(s), return_dtype=pl.List(pl.Float64)).alias(col)
+                # pl.col(col).map_elements(lambda s: mean_vector(s), return_dtype=pl.List(pl.Float64)).alias(col)
+                # pl.col(col).map_elements(mean_vector, return_dtype=pl.List(pl.Float64)).alias(col)
+                pl.col(col)
             )
         else:
             aggregations.append(
@@ -520,9 +535,16 @@ def aggregate_df():
             )
     business_df = business_df.group_by("business_id").agg(aggregations)
 
-    long_df = review_df.join(user_df, on="user_id", how="left")
-    long_df = long_df.join(business_df, on="business_id", how="left")
-    import pdb; pdb.set_trace()
+    for column in business_df.collect_schema().names():
+        if "embeddings" in column:
+            business_df = business_df.with_columns(
+            pl.col(column).map_elements(mean_vector, return_dtype=pl.List(pl.Float64))
+    )
+    pdb.set_trace()
+    merged_df = review_df.join(user_df, on="user_id", how="left")
+    pdb.set_trace()
+    merged_df = merged_df.join(business_df, on="business_id", how="left")
+    merged_df.collect().write_parquet("/home/shared/yelp/merged_df.parquet")
 
     # business_list = caption_tables + photo_tables + [business_df]
     # dataframes = [review_df, user_df, business_list]
@@ -576,23 +598,23 @@ def aggregate_df():
     # )
     # TODO:pivot the business dataframe so we have one row per business
 
-    import pdb
+    # import pdb
 
-    pdb.set_trace()
-    business_df = business_df.select("business_id", "code", "index", "numerical_value").pivot(
-        index="business_id", on="code", values="numerical_value"
-    )
+    # pdb.set_trace()
+    # business_df = business_df.select("business_id", "code", "index", "numerical_value").pivot(
+    #     index="business_id", on="code", values="numerical_value"
+    # )
 
-    merged_review_df = review_df.join(user_df, on="user_id", how="left")
-    merged_review_df = merged_review_df.join(business_df, on="business_id", how="left")
-    merged_review_df.sink_parquet("/home/shared/yelp/merged_review_df.parquet")
+    # merged_review_df = review_df.join(user_df, on="user_id", how="left")
+    # merged_review_df = merged_review_df.join(business_df, on="business_id", how="left")
+    # merged_review_df.sink_parquet("/home/shared/yelp/merged_review_df.parquet")
 
-    logger.info("Joining dfs")
+    # logger.info("Joining dfs")
 
-    import pdb
+    # import pdb
 
-    pdb.set_trace()
-    big_df = long_dfs[0]
+    # pdb.set_trace()
+    # big_df = long_dfs[0]
     # import pdb; pdb.set_trace()
     # for i in range(1, len(long_dfs)):
     #     if "user_id" in idx_cols[i]:
@@ -670,7 +692,7 @@ def aggregate_df():
 
 if __name__ == "__main__":
     # process_photo_captions()
-    # process_review()
+    process_review()
     # process_business()
     # process_user()
     aggregate_df()

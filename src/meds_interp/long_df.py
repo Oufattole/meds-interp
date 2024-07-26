@@ -7,7 +7,7 @@ def generate_long_df(df: pl.DataFrame, id_column="patient_id", timestamp_column=
     """Makes a long form version of the given dataframe input df has columns "patient_id", "timestamp",
     "label", "embedding_1" all the way to "embedding_n"."""
     long_rows = []
-    embeddings = df.columns[5:]
+    embeddings = df.columns[3:]
     for row in df.iter_rows(named=True):
         for embedding in embeddings:
             i = 0
