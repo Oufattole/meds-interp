@@ -141,6 +141,8 @@ class KNN_Model(BaseEstimator, ClassifierMixin):
                     embed_array = np.asarray(column_data.to_list())
                 else:
                     embed_array = np.expand_dims(np.asarray(column_data.to_list()), axis=1)
+                if embed_array.ndim == 3:
+                    embed_array = embed_array.reshape(embed_array.shape[0], -1)
                 embeddings.append(embed_array)
         else:
             embeddings = X
@@ -264,6 +266,7 @@ def main(cfg: DictConfig):
     knn.fit(train_df)
     val_df = pl.read_parquet(Path(cfg.input_path) / "val.parquet")
     pred_labels = knn.predict(val_df)
+    import pdb; pdb.set_trace()
     return roc_auc_score(val_df.get_column("label").to_numpy(), pred_labels)
 
 

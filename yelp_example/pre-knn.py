@@ -447,86 +447,26 @@ def aggregate_df():
             mean_vec = np.mean(vectors, axis=0).tolist()
             return mean_vec
         else:
+            # return [0.0] * 512
             return []
-    
-    def mean_vectors(list_of_lists):
-        for vector in list_of_lists:
-            continue
 
-
-    # review_user_grouped = process_review().group_by("user_id", maintain_order=True).agg([
-    #     pl.col("review_embeddings").map_elements(mean_vector, return_dtype=pl.List(pl.Float64)),
-    #     pl.col("useful").mean(),
-    #     pl.col("funny").mean(),
-    #     pl.col("cool").mean(),
-    #     pl.col("stars").mean(),
-    # ])
-    # user_review_joined = review_user_grouped.join(process_user(), on="user_id", how="left", coalesce=True)
-    # print(user_review_joined)
-    # review_business_grouped = process_review().group_by("business_id", maintain_order=True).agg([
-    #     pl.col("review_embeddings").map_elements(mean_vector, return_dtype=pl.List(pl.Float64)),
-    #     pl.col("useful").mean(),
-    #     pl.col("funny").mean(),
-    #     pl.col("cool").mean(),
-    #     pl.col("stars").mean(),
-    # ])
-    # # print(review_business_grouped)
-
-    # photos_grouped = (
-    #     process_photos()
-    #     .group_by("business_id", maintain_order=True)
-    #     .agg(
-    #         [
-    #             pl.col("embeddings_inside").map_elements(mean_vector, return_dtype=pl.List(pl.Float64)),
-    #             pl.col("embeddings_outside").map_elements(mean_vector, return_dtype=pl.List(pl.Float64)),
-    #             pl.col("embeddings_food").map_elements(mean_vector, return_dtype=pl.List(pl.Float64)),
-    #             pl.col("embeddings_drink").map_elements(mean_vector, return_dtype=pl.List(pl.Float64)),
-    #             pl.col("embeddings_menu").map_elements(mean_vector, return_dtype=pl.List(pl.Float64)),
-    #         ]
-    #     )
-    # )
-    # for label in ["inside", "outside", "food", "drink", "menu"]:
-    #     photos_grouped = photos_grouped.with_columns(
-    #         pl.when(pl.col(f"embeddings_{label}") == [])
-    #         .then(None)
-    #         .otherwise(pl.col(f"embeddings_{label}"))
-    #         .alias(f"embeddings_{label}")
-    #     )
-    # # print(photos_grouped)
-    # print(photo_review_joined)
+    import pdb;
     logger.info("Reading Reviews")
     review_df = pl.scan_parquet(reviews_table_output_path)
-    import pdb; pdb.set_trace()
-    # review_df = review_df.head(100)
     logger.info("Reading Users")
     user_df = pl.scan_parquet(user_table_output_path).drop(["yelping_since"])
     logger.info("Reading Captions")
     caption_df = pl.scan_parquet(caption_table_output_path)
     logger.info("Reading Photos")
     photo_df = pl.scan_parquet(photo_table_output_path)
-    # photo_caption_labels = ["drink", "food", "inside", "menu", "outside"]
-    # caption_tables = []
-    # for label in photo_caption_labels:
-    #     caption_tables.append(pl.scan_parquet(f"/home/shared/yelp/caption_table_{label}.parquet"))
-    # logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
-    # logger.info("Reading Photos")
-    # photo_tables = []
-    # for label in photo_caption_labels:
-    #     photo_tables.append(pl.scan_parquet(f"/home/shared/yelp/photo_table_{label}.parquet"))
-    # logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
     logger.info("Reading Business")
     business_df = pl.scan_parquet(business_table_output_path)
-    # import pdb; pdb.set_trace()
     business_df = business_df.join(caption_df, on="business_id", how="left")
     business_df = business_df.join(photo_df, on="business_id", how="left")
-    import pdb; pdb.set_trace()
-    # import pdb; pdb.set_trace()
     aggregations = []
     for col in business_df.collect_schema().names()[1:]:
         if "embeddings" in col:
             aggregations.append(
-                # pl.col(col).map_elements(lambda s: mean_vector(s), return_dtype=pl.List(pl.Float64)).alias(col)
-                # pl.col(col).map_elements(mean_vector, return_dtype=pl.List(pl.Float64)).alias(col)
                 pl.col(col)
             )
         else:
@@ -546,153 +486,11 @@ def aggregate_df():
     merged_df = merged_df.join(business_df, on="business_id", how="left")
     merged_df.collect().write_parquet("/home/shared/yelp/merged_df.parquet")
 
-    # business_list = caption_tables + photo_tables + [business_df]
-    # dataframes = [review_df, user_df, business_list]
-    # names = ["review", "user", "business"]
-    # idx_cols = [["review_id", "user_id", "business_id", "timestamp", "stars"], ["user_id"], ["business_id"]]
-
-    
-    # logger.info("Exploding dfs")
-    # output_dfs = []
-    # for dfs, idx_col_list, name in zip(dataframes, idx_cols, names):
-    #     output_path = Path(f"/home/shared/yelp/long_{name}_df.parquet")
-    #     if not output_path.exists():
-    #         logger.info(f"Exploding {name} df")
-    #         if isinstance(dfs, list):
-    #             long_dfs = []
-    #             for df in dfs:
-    #                 long_df: pl.LazyFrame = generate_long_df_explode(
-    #                     df, id_column=idx_col_list[0], timestamp_column=None, num_idx_cols=1
-    #                 )
-    #                 long_dfs.append(long_df)
-    #             pl.concat(long_dfs, how="vertical").sink_parquet(output_path)
-
-    #         else:
-    #             if "timestamp" in dfs.collect_schema().names():
-    #                 timestamp_column = "timestamp"
-    #             else:
-    #                 timestamp_column = None
-    #             num_idx_cols = len(idx_col_list)
-    #             if len(idx_col_list) > 1:
-    #                 more_ids = True
-    #             long_df: pl.LazyFrame = generate_long_df_explode(
-    #                 dfs,
-    #                 id_column=idx_col_list[0],
-    #                 timestamp_column=timestamp_column,
-    #                 num_idx_cols=num_idx_cols,
-    #                 more_ids=more_ids,
-    #             )
-    #             long_df.sink_parquet(output_path)
-    #     assert os.path.exists(output_path)
-    #     logger.info(f"Loading {output_path} df")
-    #     output_dfs.append(pl.scan_parquet(output_path))
-
-    # reveiw_df, user_df, business_df = output_dfs
-    # logger.info("Grouping business_ids")
-    # business_df = business_df.group_by(["business_id", "code", "index"]).mean()
-    # logger.info("Joining dfs")
-    # review_df, user_df, business_df = review_df.collect(), user_df.collect(), business_df.collect()
-    # # pivot the user dataframe so we have one row per user
-    # user_df = user_df.select("user_id", "code", "numerical_value").pivot(
-    #     index="user_id", on="code", values="numerical_value"
-    # )
-    # TODO:pivot the business dataframe so we have one row per business
-
-    # import pdb
-
-    # pdb.set_trace()
-    # business_df = business_df.select("business_id", "code", "index", "numerical_value").pivot(
-    #     index="business_id", on="code", values="numerical_value"
-    # )
-
-    # merged_review_df = review_df.join(user_df, on="user_id", how="left")
-    # merged_review_df = merged_review_df.join(business_df, on="business_id", how="left")
-    # merged_review_df.sink_parquet("/home/shared/yelp/merged_review_df.parquet")
-
-    # logger.info("Joining dfs")
-
-    # import pdb
-
-    # pdb.set_trace()
-    # big_df = long_dfs[0]
-    # import pdb; pdb.set_trace()
-    # for i in range(1, len(long_dfs)):
-    #     if "user_id" in idx_cols[i]:
-    #         other = long_dfs[i].join(review_df.select(["review_id", "user_id"]), on="user_id", how="left")
-    #     else:
-    #         other = review_df.join(long_dfs[i], on="business_id", how="left")
-    #     new_df = other.select([
-    #             'review_id',
-    #             'user_id',
-    #             'business_id',
-    #             'timestamp',
-    #             pl.col('code_right').alias('code'),
-    #             pl.col('index_right').alias('index'),
-    #             pl.col('numerical_value_right').alias('numerical_value')
-    #             ])
-    #     big_df = pl.concat([big_df, new_df], how='vertical')
-    # logger.info("Grouping dfs")
-    # big_df = big_df.group_by(["review_id", "user_id", "business_id", "timestamp", "code", "index"]).mean()
-    # logger.info("Sinking/collecting dfs")
-    # assert isinstance(big_df, pl.LazyFrame)
-    # big_df.sink_parquet("/home/shared/yelp/big_table.parquet")
-
-    # big_df.sink_parquet("/home/shared/yelp/big_table.parquet")
-    # import pdb; pdb.set_trace()
-    # long_dfs[0].columns == ["review_id", "user_id", "business_id", "code", "timestamp", "numerical_value"]
-    # long_dfs[1].columns == ["business_id", "code", "timestamp", "numerical_value"]
-    # -> group_by("business_id", "code", "embedding_index").mean()
-
-    # -> left join review_id -- problem is this explodes the size of the dataset
-
-    # long_dfs[0].columns == ["review_id", "user_id", "business_id", "code", "timestamp", "numerical_value"]
-    # long_dfs[1].columns == ["review_id", "business_id", "code", "timestamp", "numerical_value"]
-
-    # -> vstack
-    # pl.concat(long_dfs, how='vertical')
-
-    # pl.concat(long_dfs)
-
-    # logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
-    # logger.info("Merging users")
-    # review_df = review_df.join(user_df, on="user_id", how="left")
-    # logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
-    # logger.info("Merging captions")
-    # for table in caption_tables:
-    #     import pdb; pdb.set_trace()
-    #     review_df = review_df.join(table, on="business_id", how="left")
-    #     logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
-    # logger.info("Merging photos")
-    # for table in photo_tables:
-    #     review_df = review_df.join(table, on="business_id", how="left")
-    # logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
-    # logger.info("Merging business")
-    # review_df = review_df.join(business_df, on="business_id", how="left")
-    # logger.info(f"Reviews_df.shape: {review_df.select(pl.len()).collect().item()}")
-    # logger.info("Aggregating")
-    # # TODO Fix this aggregation
-    # # import pdb; pdb.set_trace()
-    # long_df = generate_long_df_explode(review_df, id_column="review_id", timestamp_column="timestamp")
-    # # long_df = long_df.group_by("review_id", "code").mean()
-    # logger.info("writing")
-    # # long_df.sink_parquet("/home/shared/yelp/big_table.parquet")
-    # long_df.sink_parquet("/home/shared/yelp/big_table.parquet")
-
-
-# large_df.select([pl.arange(0, pl.col("category_embeddings").arr.rank().list.len())])
-
-
-# large_df.select(pl.col("category_embeddings").arr.to_list().eval(pl.element().alias("embedding"), parallel=True).with_columns(pl.arange(0, pl.count()).alias("index")))
-
-# large_df.select([pl.arange(0, pl.col("category_embeddings").arr.to_list().len()).alias("index")])
-
-# large_df.select([pl.col("category_embeddings").explode().alias("embedding"),pl.arange(0, pl.col("category_embeddings").len()).alias("index")])
-# large_df.select([pl.col("category_embeddings").explode()])
 
 
 if __name__ == "__main__":
     # process_photo_captions()
-    process_review()
+    # process_review()
     # process_business()
     # process_user()
     aggregate_df()

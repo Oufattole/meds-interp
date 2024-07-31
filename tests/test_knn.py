@@ -88,3 +88,61 @@ def test_knn_tuning(tmp_path):
         overrides = [f"{k}={v}" for k, v in test_config.items()]
         cfg = compose(config_name="knn", overrides=overrides)  # config.yaml
     knn.main(cfg)
+
+def test_yelp_knn(tmp_path):
+    yelp_lazy = pl.scan_parquet("/home/shared/yelp/merged_df.parquet").rename({"stars": "label"}).head(100)
+
+    modalities = ['review_embeddings', 'useful', 'funny', 'cool', 'user_review_count', 'useful_sent', 'funny_sent', 'cool_sent', \
+     'fans', 'num_years_elite', 'average_stars_given', 'compliment_hot', 'compliment_more', 'compliment_profile', \
+    'compliment_cute', 'compliment_list', 'compliment_note', 'compliment_plain', 'compliment_cool', \
+    'compliment_funny', 'compliment_writer', 'compliment_photos', 'attribute_embeddings', 'category_embeddings', \
+    'avg_stars', 'bus_review_count', 'cap_embeddings_outside', 'cap_embeddings_drink', 'cap_embeddings_food', \
+    'cap_embeddings_menu', 'cap_embeddings_inside', 'img_embeddings_drink', 'img_embeddings_food', 'img_embeddings_menu', \
+    'img_embeddings_outside', 'img_embeddings_inside']
+    empty_vector_fix = [
+        pl.when(pl.col(modality) == [])
+            .then([0.0]*512)
+            .otherwise(pl.col(modality))
+            .alias(modality)
+        for modality in ['cap_embeddings_outside', 'cap_embeddings_drink', 'cap_embeddings_food',
+                         'cap_embeddings_menu', 'cap_embeddings_inside', 'img_embeddings_drink', 'img_embeddings_food',
+                         'img_embeddings_menu', 'img_embeddings_outside', 'img_embeddings_inside']
+    ]
+    yelp_lazy = yelp_lazy.with_columns(empty_vector_fix)
+    yelp_lazy = yelp_lazy.with_columns((pl.col("label") - 1).alias("label"))
+    
+    
+    # train_df = yelp_lazy.slice(0, 4194168)
+    # val_df = yelp_lazy.slice(4194168, 1398056)
+    # test_df = yelp_lazy.slice(5592224, 1398056)
+
+    height = yelp_lazy.select(pl.len()).collect().item()
+    total_rows = 100
+    # total_rows = height
+
+    # Calculate the number of rows for each split
+    train_rows = int(total_rows * 0.6)
+    val_rows = int(total_rows * 0.2)
+    test_rows = int(total_rows * 0.2)
+
+    # Create slices for each split
+    train_df = yelp_lazy.slice(0, train_rows)
+    val_df = yelp_lazy.slice(train_rows, val_rows)
+    test_df = yelp_lazy.slice(train_rows + val_rows, test_rows)
+
+    train_df.collect().write_parquet(Path(tmp_path) / "train.parquet")
+    val_df.collect().write_parquet(Path(tmp_path) / "val.parquet")
+    test_df.collect().write_parquet(Path(tmp_path) / "test.parquet")
+
+    test_config = {
+        "modalities": modalities,
+        "input_path": tmp_path,
+    }
+
+    for modality in modalities:
+        test_config[f"+weights.{modality}"] = 1
+    
+    with initialize(version_base=None, config_path="../src/meds_interp/configs/"):  # path to config.yaml
+        overrides = [f"{k}={v}" for k, v in test_config.items()]
+        cfg = compose(config_name="knn", overrides=overrides)  # config.yaml
+    knn.main(cfg)
