@@ -192,7 +192,6 @@ class KNN_Model(BaseEstimator, ClassifierMixin):
         else:
             assert self.preprocess == Preprocess_Type.NONE
             X = self.concat_data(X)
-
         return X * reweight_vector
 
     def fit(self, X: pl.DataFrame):
@@ -265,9 +264,8 @@ def main(cfg: DictConfig):
     train_df = pl.read_parquet(Path(cfg.input_path) / "train.parquet")
     knn.fit(train_df)
     val_df = pl.read_parquet(Path(cfg.input_path) / "val.parquet")
-    pred_labels = knn.predict(val_df)
-    import pdb; pdb.set_trace()
-    return roc_auc_score(val_df.get_column("label").to_numpy(), pred_labels)
+    pred_labels = knn.predict_proba(val_df)
+    return roc_auc_score(val_df.get_column("label").to_numpy(), pred_labels, multi_class='ovr')
 
 
 if __name__ == "__main__":

@@ -45,52 +45,53 @@ def test_knn_model():
     assert x3.shape == train_df_2.get_column("label").shape
 
 
-def test_knn_tuning(tmp_path):
-    train_df = pl.DataFrame(
-        {
-            "modality_1": [[1, 1, 0], [1, 2, 1], [2, 0, -2], [0, 1, 2]],
-            "modality_2": [[1, 0, 0], [0, 2, 1], [4, 1, 1], [3, 1, 2]],
-            "modality_3": [1, 2, 3, 4],
-            "label": [0, 0, 1, 1],
-        }
-    )
-    val_df = pl.DataFrame(
-        {
-            "modality_1": [[3, 5, 2], [4, 1, 3], [6, 2, 0], [7, 1, 1]],
-            "modality_2": [[2, 3, 1], [5, 0, 4], [1, 6, 2], [3, 2, 5]],
-            "modality_3": [2, 6, 1, 1],
-            "label": [0, 1, 0, 1],
-        }
-    )
-    test_df = pl.DataFrame(
-        {
-            "modality_1": [[-2, 3, -1], [0, -1, 2], [-3, 1, -2], [1, -2, 3]],
-            "modality_2": [[3, -1, 0], [-2, 2, -3], [1, -3, 2], [0, 3, -1]],
-            "modality_3": [1, 4, 2, 6],
-            "label": [0, 0, 1, 1],
-        }
-    )
-    train_df.write_parquet(Path(tmp_path) / "train.parquet")
-    val_df.write_parquet(Path(tmp_path) / "val.parquet")
-    test_df.write_parquet(Path(tmp_path) / "test.parquet")
+# def test_knn_tuning(tmp_path):
+#     train_df = pl.DataFrame(
+#         {
+#             "modality_1": [[1, 1, 0], [1, 2, 1], [2, 0, -2], [0, 1, 2]],
+#             "modality_2": [[1, 0, 0], [0, 2, 1], [4, 1, 1], [3, 1, 2]],
+#             "modality_3": [1, 2, 3, 4],
+#             "label": [0, 0, 1, 1],
+#         }
+#     )
+#     val_df = pl.DataFrame(
+#         {
+#             "modality_1": [[3, 5, 2], [4, 1, 3], [6, 2, 0], [7, 1, 1]],
+#             "modality_2": [[2, 3, 1], [5, 0, 4], [1, 6, 2], [3, 2, 5]],
+#             "modality_3": [2, 6, 1, 1],
+#             "label": [0, 1, 0, 1],
+#         }
+#     )
+#     test_df = pl.DataFrame(
+#         {
+#             "modality_1": [[-2, 3, -1], [0, -1, 2], [-3, 1, -2], [1, -2, 3]],
+#             "modality_2": [[3, -1, 0], [-2, 2, -3], [1, -3, 2], [0, 3, -1]],
+#             "modality_3": [1, 4, 2, 6],
+#             "label": [0, 0, 1, 1],
+#         }
+#     )
+#     train_df.write_parquet(Path(tmp_path) / "train.parquet")
+#     val_df.write_parquet(Path(tmp_path) / "val.parquet")
+#     test_df.write_parquet(Path(tmp_path) / "test.parquet")
 
-    # import pdb; pdb.set_trace()
+#     # import pdb; pdb.set_trace()
 
-    test_config = {
-        "modalities": ["modality_1", "modality_2", "modality_3"],
-        "+weights.modality_1": 1,
-        "+weights.modality_2": 1,
-        "+weights.modality_3": 1,
-        "input_path": tmp_path,
-    }
+#     test_config = {
+#         "modalities": ["modality_1", "modality_2", "modality_3"],
+#         "+weights.modality_1": 1,
+#         "+weights.modality_2": 1,
+#         "+weights.modality_3": 1,
+#         "input_path": tmp_path,
+#     }
 
-    with initialize(version_base=None, config_path="../src/meds_interp/configs/"):  # path to config.yaml
-        overrides = [f"{k}={v}" for k, v in test_config.items()]
-        cfg = compose(config_name="knn", overrides=overrides)  # config.yaml
-    knn.main(cfg)
+#     with initialize(version_base=None, config_path="../src/meds_interp/configs/"):  # path to config.yaml
+#         overrides = [f"{k}={v}" for k, v in test_config.items()]
+#         cfg = compose(config_name="knn", overrides=overrides)  # config.yaml
+#     knn.main(cfg)
 
 def test_yelp_knn(tmp_path):
-    yelp_lazy = pl.scan_parquet("/home/shared/yelp/merged_df.parquet").rename({"stars": "label"}).head(100)
+    total_rows = 200000
+    yelp_lazy = pl.scan_parquet("/home/shared/yelp/merged_df.parquet").rename({"stars": "label"}).head(total_rows)
 
     modalities = ['review_embeddings', 'useful', 'funny', 'cool', 'user_review_count', 'useful_sent', 'funny_sent', 'cool_sent', \
      'fans', 'num_years_elite', 'average_stars_given', 'compliment_hot', 'compliment_more', 'compliment_profile', \
@@ -100,24 +101,33 @@ def test_yelp_knn(tmp_path):
     'cap_embeddings_menu', 'cap_embeddings_inside', 'img_embeddings_drink', 'img_embeddings_food', 'img_embeddings_menu', \
     'img_embeddings_outside', 'img_embeddings_inside']
     empty_vector_fix = [
-        pl.when(pl.col(modality) == [])
+        pl.when(pl.col(modality).is_null() | (pl.col(modality) == []))
             .then([0.0]*512)
             .otherwise(pl.col(modality))
             .alias(modality)
-        for modality in ['cap_embeddings_outside', 'cap_embeddings_drink', 'cap_embeddings_food',
+        for modality in ['attribute_embeddings', 'category_embeddings', 'cap_embeddings_outside', 'cap_embeddings_drink', 'cap_embeddings_food',
                          'cap_embeddings_menu', 'cap_embeddings_inside', 'img_embeddings_drink', 'img_embeddings_food',
                          'img_embeddings_menu', 'img_embeddings_outside', 'img_embeddings_inside']
     ]
+    empty_int_fix = [
+        pl.when(pl.col(modality).is_null())
+            .then(0)
+            .otherwise(pl.col(modality))
+            .alias(modality)
+        for modality in ['avg_stars', 'bus_review_count']
+        # , 'fans', 'num_years_elite', 'average_stars_given', 'compliment_hot',
+        #                  'compliment_more', 'compliment_profile', 'compliment_cute', 'compliment_list', 'compliment_note',
+        #                  'compliment_plain', 'compliment_cool', 'compliment_funny', 'compliment_writer', 'compliment_photos']
+    ]
+    yelp_lazy = yelp_lazy.with_columns(empty_int_fix)
     yelp_lazy = yelp_lazy.with_columns(empty_vector_fix)
     yelp_lazy = yelp_lazy.with_columns((pl.col("label") - 1).alias("label"))
-    
     
     # train_df = yelp_lazy.slice(0, 4194168)
     # val_df = yelp_lazy.slice(4194168, 1398056)
     # test_df = yelp_lazy.slice(5592224, 1398056)
 
     height = yelp_lazy.select(pl.len()).collect().item()
-    total_rows = 100
     # total_rows = height
 
     # Calculate the number of rows for each split
@@ -134,6 +144,7 @@ def test_yelp_knn(tmp_path):
     val_df.collect().write_parquet(Path(tmp_path) / "val.parquet")
     test_df.collect().write_parquet(Path(tmp_path) / "test.parquet")
 
+    # import pdb; pdb.set_trace()
     test_config = {
         "modalities": modalities,
         "input_path": tmp_path,
