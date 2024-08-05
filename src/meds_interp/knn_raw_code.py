@@ -264,6 +264,12 @@ def main(cfg: DictConfig):
     train_df = pl.read_parquet(Path(cfg.input_path) / "train.parquet")
     knn.fit(train_df)
     val_df = pl.read_parquet(Path(cfg.input_path) / "val.parquet")
+    truth = val_df.get_column("label").to_numpy()
+    if len(np.unique(truth)) == 2:
+        pred_labels = knn.predict(val_df)
+        print(get_results(truth, pred_labels, knn.predict_proba(val_df)))
+        assert 0
+        return get_results(truth, pred_labels, knn.predict_proba(val_df))
     pred_labels = knn.predict_proba(val_df)
     return roc_auc_score(val_df.get_column("label").to_numpy(), pred_labels, multi_class='ovr')
 

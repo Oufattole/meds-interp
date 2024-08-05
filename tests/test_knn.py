@@ -121,7 +121,11 @@ def test_yelp_knn(tmp_path):
     ]
     yelp_lazy = yelp_lazy.with_columns(empty_int_fix)
     yelp_lazy = yelp_lazy.with_columns(empty_vector_fix)
-    yelp_lazy = yelp_lazy.with_columns((pl.col("label") - 1).alias("label"))
+    yelp_lazy = yelp_lazy.with_columns((pl.when(pl.col("label") >= 3)
+                                          .then(1)
+                                          .otherwise(0)
+                                          .alias("label")))
+    # yelp_lazy = yelp_lazy.with_columns((pl.col("label") - 1).alias("label"))
     
     # train_df = yelp_lazy.slice(0, 4194168)
     # val_df = yelp_lazy.slice(4194168, 1398056)
